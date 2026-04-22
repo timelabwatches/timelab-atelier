@@ -2131,9 +2131,9 @@ const SalesView = ({ state, setView }) => {
                 return (
                   <button key={w.id} onClick={() => setView({ name: "watch-detail", id: w.id })} className="w-full text-left">
                     <Card className="p-3.5">
-                      <div className="flex items-start gap-3">
+                      <div className="flex items-start gap-2.5">
                         {/* Date badge */}
-                        <div className="flex flex-col items-center justify-center w-12 flex-shrink-0 py-1" style={{
+                        <div className="flex flex-col items-center justify-center w-11 flex-shrink-0 py-1" style={{
                           background: w.status === "sold" ? `${C.jade}11` : w.status === "returned" ? `${C.amber}11` : `${C.ruby}11`,
                           border: `1px solid ${w.status === "sold" ? C.jade : w.status === "returned" ? C.amber : C.ruby}44`,
                           borderRadius: 12,
@@ -2141,6 +2141,21 @@ const SalesView = ({ state, setView }) => {
                           <span className="font-serif text-lg leading-none" style={{ color: w.status === "sold" ? C.jade : w.status === "returned" ? C.amber : C.ruby, fontFamily: "'Fraunces', serif" }}>{dayStr}</span>
                           <span className="text-[9px] uppercase tracking-widest mt-0.5" style={{ color: C.mute }}>{monthStr}</span>
                         </div>
+                        {/* Photo thumbnail */}
+                        {w.accounting_photo_url ? (
+                          <div className="w-11 h-11 rounded-xl overflow-hidden flex-shrink-0 mt-0.5" style={{
+                            border: `1px solid ${w.status === "sold" ? C.jade : w.status === "returned" ? C.amber : C.ruby}44`,
+                          }}>
+                            <img src={w.accounting_photo_url} alt="" className="w-full h-full object-cover" />
+                          </div>
+                        ) : (
+                          <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5" style={{
+                            background: `radial-gradient(circle, ${w.status === "sold" ? C.jade : w.status === "returned" ? C.amber : C.ruby}11 0%, transparent 70%)`,
+                            border: `1px solid ${C.line}`,
+                          }}>
+                            <Watch size={14} style={{ color: C.mute }} />
+                          </div>
+                        )}
                         {/* Body */}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-baseline justify-between gap-2">
