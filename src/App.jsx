@@ -1074,12 +1074,20 @@ const StockView = ({ state, setView, filter }) => {
             className="w-full text-left">
             <Card className="p-3.5">
               <div className="flex items-start gap-3">
-                <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0" style={{
-                  background: `radial-gradient(circle, ${iconColor(w)}22 0%, transparent 70%)`,
-                  border: `1px solid ${iconColor(w)}44`
-                }}>
-                  <Watch size={18} style={{ color: iconColor(w) }} />
-                </div>
+                {w.accounting_photo_url ? (
+                  <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0" style={{
+                    border: `1px solid ${iconColor(w)}66`,
+                  }}>
+                    <img src={w.accounting_photo_url} alt="" className="w-full h-full object-cover" />
+                  </div>
+                ) : (
+                  <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0" style={{
+                    background: `radial-gradient(circle, ${iconColor(w)}22 0%, transparent 70%)`,
+                    border: `1px solid ${iconColor(w)}44`
+                  }}>
+                    <Watch size={18} style={{ color: iconColor(w) }} />
+                  </div>
+                )}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-baseline justify-between gap-2">
                     <span className="font-serif text-base truncate" style={{ color: C.cream, fontFamily: "'Fraunces', serif" }}>{w.brand}</span>
