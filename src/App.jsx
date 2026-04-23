@@ -3599,6 +3599,10 @@ const TaxAnalysisView = ({ state, setView }) => {
 };
 
 
+// ═══════════════════════════════════════════════════════════
+// MAIN APP
+// ═══════════════════════════════════════════════════════════
+export default function App() {
   const [state, dispatch] = useReducer(reducer, initialState);
   const [view, setView] = useState({ name: "dashboard" });
   const [syncStatus, setSyncStatus] = useState({ status: "idle", error: null, lastSync: getLastSync() });
