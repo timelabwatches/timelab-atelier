@@ -3,6 +3,7 @@ import {
   getGasConfig, setGasConfig, pingGas, pullFromGas, pullWithSyncFromGas, syncFromMasterGas, pushToGas,
   uploadPhotoToGas, deletePhotoFromGas, queueOp, drainQueue,
   getLastSync, setLastSync,
+  invoicePreviewGas, invoiceGenerateGas, listPendingInvoicesGas,
 } from "./storage.js";
 import {
   Home, Package, ShoppingBag, Users, FileText, TrendingUp, Settings,
@@ -1194,6 +1195,15 @@ const WatchDetail = ({ state, dispatch, id, setView }) => {
   const [lostData, setLostData] = useState({ lost_reason: "", lost_date: today() });
   const [dropModal, setDropModal] = useState(false);
   const [newPrice, setNewPrice] = useState(0);
+  const [invoiceModal, setInvoiceModal] = useState(false);
+  const [invoicePreviewHtml, setInvoicePreviewHtml] = useState("");
+  const [invoiceFechaFactura, setInvoiceFechaFactura] = useState(today());
+  const [invoiceIor, setInvoiceIor] = useState("");
+  const [invoiceNeedsIor, setInvoiceNeedsIor] = useState(false);
+  const [invoicePreviewNum, setInvoicePreviewNum] = useState("");
+  const [invoiceLoading, setInvoiceLoading] = useState(false);
+  const [invoiceError, setInvoiceError] = useState("");
+  const [invoiceStage, setInvoiceStage] = useState("form"); // form | preview | success
 
   if (!watch) return <div className="p-4" style={{ color: C.dim }}>No encontrado</div>;
 
@@ -1318,6 +1328,27 @@ const WatchDetail = ({ state, dispatch, id, setView }) => {
                 <div className="h-px my-2" style={{ background: C.line }} />
                 <Row label="IVA repercutido (REBU, margen)" value={euroExact(rebuVat)} valColor={C.amber} />
               </>
+            )}
+          </div>
+          {/* Invoice action */}
+          <div className="mt-3 pt-3" style={{ borderTop: `1px solid ${C.line}` }}>
+            {watch.factura_url ? (
+              <a href={watch.factura_url} target="_blank" rel="noopener noreferrer"
+                 className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg text-sm font-semibold transition-all"
+                 style={{ background: `${C.jade}22`, color: C.jade, border: `1px solid ${C.jade}55` }}>
+                <FileText size={14} /> Ver factura {watch.factura_num}
+              </a>
+            ) : (
+              <Btn onClick={() => {
+                setInvoiceStage("form");
+                setInvoiceError("");
+                setInvoiceFechaFactura(today());
+                setInvoiceIor(watch.ior_authorization || "");
+                setInvoicePreviewHtml("");
+                setInvoicePreviewNum("");
+                setInvoiceNeedsIor(false);
+                setInvoiceModal(true);
+              }} icon={FileText} variant="primary" full>Generar factura</Btn>
             )}
           </div>
         </Card>
@@ -1473,6 +1504,165 @@ const WatchDetail = ({ state, dispatch, id, setView }) => {
               setLostModal(false);
             }} icon={XCircle} variant="danger" full>Confirmar pérdida</Btn>
           </div>
+        </Modal>
+      )}
+
+      {/* Invoice modal */}
+      {invoiceModal && (
+        <Modal title={
+          invoiceStage === "form" ? "Generar factura" :
+          invoiceStage === "preview" ? "Previsualización factura" :
+          "Factura generada"
+        } onClose={() => setInvoiceModal(false)}>
+          {invoiceError && (
+            <div className="p-3 mb-3 rounded-xl text-xs" style={{ background: `${C.ruby}11`, border: `1px solid ${C.ruby}44`, color: C.ruby }}>
+              ⚠ {invoiceError}
+            </div>
+          )}
+
+          {invoiceStage === "form" && (
+            <div className="space-y-3">
+              <div className="p-3 rounded-xl text-xs" style={{ background: `${C.gold}08`, border: `1px solid ${C.gold}33`, color: C.cream }}>
+                <div className="font-semibold mb-1">{watch.brand} {watch.model}</div>
+                <div style={{ color: C.dim }}>{watch.customer_name || "Cliente particular"} · {euroExact((watch.sale_price || 0) + (watch.sale_shipping || 0))}</div>
+              </div>
+
+              <Field label="Fecha de emisión" type="date" value={invoiceFechaFactura} onChange={setInvoiceFechaFactura} />
+
+              <div className="text-[10px]" style={{ color: C.mute }}>
+                Si la venta es fuera UE por Catawiki, se te pedirá el Authorization number en el siguiente paso.
+              </div>
+
+              <Btn
+                onClick={async () => {
+                  setInvoiceLoading(true);
+                  setInvoiceError("");
+                  try {
+                    const res = await invoicePreviewGas({
+                      tracker_id: watch.id,
+                      fecha_factura: invoiceFechaFactura,
+                      ior_authorization: invoiceIor,
+                    });
+                    if (!res.ok) {
+                      setInvoiceError(res.error || "Error desconocido");
+                    } else {
+                      setInvoicePreviewHtml(res.html);
+                      setInvoicePreviewNum(res.preview_number);
+                      setInvoiceNeedsIor(Boolean(res.needs_ior));
+                      setInvoiceStage("preview");
+                    }
+                  } catch (e) {
+                    setInvoiceError(e.message);
+                  } finally {
+                    setInvoiceLoading(false);
+                  }
+                }}
+                icon={Eye} variant="primary" full
+                disabled={invoiceLoading}
+              >{invoiceLoading ? "Generando preview..." : "Previsualizar"}</Btn>
+            </div>
+          )}
+
+          {invoiceStage === "preview" && (
+            <div className="space-y-3">
+              <div className="text-xs" style={{ color: C.dim }}>
+                Número asignado al confirmar: <span style={{ color: C.gold, fontWeight: 600 }}>{invoicePreviewNum}</span>
+              </div>
+
+              {invoiceNeedsIor && (
+                <div className="p-3 rounded-xl" style={{ background: `${C.amber}11`, border: `1px solid ${C.amber}44` }}>
+                  <div className="text-xs font-semibold mb-2" style={{ color: C.amber }}>
+                    ⚠ Venta fuera UE por Catawiki
+                  </div>
+                  <div className="text-[10px] mb-2" style={{ color: C.dim }}>
+                    Introduce el Authorization number que te dio Catawiki para esta venta.
+                  </div>
+                  <Field label="Authorization number" value={invoiceIor} onChange={setInvoiceIor} placeholder="ej. 1385" />
+                </div>
+              )}
+
+              {/* Preview HTML */}
+              <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${C.line}`, background: "#fff" }}>
+                <iframe
+                  srcDoc={invoicePreviewHtml}
+                  title="Preview factura"
+                  style={{ width: "100%", height: "420px", border: "none" }}
+                />
+              </div>
+
+              <div className="text-[10px]" style={{ color: C.mute }}>
+                Esta preview muestra cómo quedará el PDF. Al confirmar se asigna el número {invoicePreviewNum} de forma definitiva y se guarda en Drive.
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <Btn
+                  onClick={() => {
+                    setInvoiceStage("form");
+                    setInvoiceError("");
+                  }}
+                  icon={ChevronLeft} variant="ghost"
+                >Volver</Btn>
+                <Btn
+                  onClick={async () => {
+                    if (invoiceNeedsIor && !invoiceIor.trim()) {
+                      setInvoiceError("Authorization number requerido para ventas fuera UE por Catawiki");
+                      return;
+                    }
+                    setInvoiceLoading(true);
+                    setInvoiceError("");
+                    try {
+                      const res = await invoiceGenerateGas({
+                        tracker_id: watch.id,
+                        fecha_factura: invoiceFechaFactura,
+                        ior_authorization: invoiceIor,
+                      });
+                      if (!res.ok) {
+                        setInvoiceError(res.error || "Error desconocido");
+                      } else {
+                        // Update local state
+                        dispatch({
+                          type: "UPDATE_WATCH",
+                          watch: {
+                            ...watch,
+                            factura_num: res.invoice_number,
+                            factura_estado: "PDF generado",
+                            factura_url: res.pdf_url,
+                            fecha_factura: res.fecha_factura,
+                            ior_authorization: invoiceIor || watch.ior_authorization,
+                          },
+                        });
+                        setInvoicePreviewNum(res.invoice_number);
+                        setInvoicePreviewHtml(res.pdf_url);
+                        setInvoiceStage("success");
+                      }
+                    } catch (e) {
+                      setInvoiceError(e.message);
+                    } finally {
+                      setInvoiceLoading(false);
+                    }
+                  }}
+                  icon={CheckCircle2} variant="primary"
+                  disabled={invoiceLoading}
+                >{invoiceLoading ? "Guardando..." : "Confirmar"}</Btn>
+              </div>
+            </div>
+          )}
+
+          {invoiceStage === "success" && (
+            <div className="space-y-3">
+              <div className="p-4 rounded-xl text-center" style={{ background: `${C.jade}11`, border: `1px solid ${C.jade}44` }}>
+                <CheckCircle2 size={32} style={{ color: C.jade, margin: "0 auto 8px" }} />
+                <div className="text-sm font-semibold" style={{ color: C.cream }}>Factura generada</div>
+                <div className="text-lg font-serif mt-1" style={{ color: C.gold, fontFamily: "'Fraunces', serif" }}>{invoicePreviewNum}</div>
+              </div>
+              <a href={invoicePreviewHtml} target="_blank" rel="noopener noreferrer"
+                 className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg text-sm font-semibold"
+                 style={{ background: `${C.gold}22`, color: C.gold, border: `1px solid ${C.gold}55` }}>
+                <FileText size={14} /> Abrir PDF
+              </a>
+              <Btn onClick={() => setInvoiceModal(false)} icon={X} variant="ghost" full>Cerrar</Btn>
+            </div>
+          )}
         </Modal>
       )}
 
@@ -3289,6 +3479,7 @@ ${stock.sort((a,b) => daysBetween(b.purchase_date, today()) - daysBetween(a.purc
         <div className="text-xs tracking-widest uppercase font-bold" style={{ color: C.mute }}>Herramientas</div>
         <Btn onClick={() => setView({ name: "comps" })} icon={TrendingUp} variant="secondary" full>Comparables de precio</Btn>
         <Btn onClick={() => setView({ name: "tax-analysis" })} icon={Calculator} variant="secondary" full>Análisis Autónomo vs SL</Btn>
+        <Btn onClick={() => setView({ name: "pending-invoices" })} icon={FileText} variant="secondary" full>Facturas pendientes</Btn>
       </Card>
 
       <Card className="p-4 space-y-3">
@@ -3600,6 +3791,129 @@ const TaxAnalysisView = ({ state, setView }) => {
 
 
 // ═══════════════════════════════════════════════════════════
+// VIEW: PENDING INVOICES — Batch retroactivo
+// ═══════════════════════════════════════════════════════════
+const PendingInvoicesView = ({ state, setView }) => {
+  const [loading, setLoading] = useState(true);
+  const [pending, setPending] = useState([]);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+    const load = async () => {
+      try {
+        const res = await listPendingInvoicesGas();
+        if (!alive) return;
+        if (res.ok) {
+          setPending(res.pending || []);
+        } else {
+          setError(res.error || "Error al cargar");
+        }
+      } catch (e) {
+        if (alive) setError(e.message);
+      } finally {
+        if (alive) setLoading(false);
+      }
+    };
+    load();
+    return () => { alive = false; };
+  }, []);
+
+  // Resolve photo from local state if available
+  const findPhoto = (trackerId) => {
+    const w = state.watches.find(x => x.id === trackerId);
+    return w?.accounting_photo_url;
+  };
+
+  return (
+    <div className="px-4 pb-24 pt-4 space-y-3">
+      <div className="pt-2">
+        <button onClick={() => setView({ name: "settings" })} className="flex items-center gap-1 text-xs mb-2" style={{ color: C.mute }}>
+          <ChevronRight size={12} style={{ transform: "rotate(180deg)" }} /> Ajustes
+        </button>
+        <h1 className="font-serif text-3xl" style={{ color: C.cream, fontFamily: "'Fraunces', serif", fontWeight: 300 }}>Facturas pendientes</h1>
+        <div className="text-xs mt-1" style={{ color: C.dim }}>
+          {loading ? "Cargando..." : `${pending.length} venta${pending.length === 1 ? "" : "s"} sin facturar`}
+        </div>
+      </div>
+
+      {error && (
+        <Card className="p-4" style={{ background: `${C.ruby}11`, border: `1px solid ${C.ruby}44` }}>
+          <div className="text-sm" style={{ color: C.ruby }}>⚠ {error}</div>
+        </Card>
+      )}
+
+      {!loading && pending.length === 0 && !error && (
+        <Card className="p-6 text-center">
+          <CheckCircle2 size={32} style={{ color: C.jade, margin: "0 auto 8px" }} />
+          <div className="text-sm font-semibold" style={{ color: C.cream }}>Todo al día</div>
+          <div className="text-xs mt-1" style={{ color: C.dim }}>No tienes ventas sin factura</div>
+        </Card>
+      )}
+
+      {loading && (
+        <Card className="p-6 text-center">
+          <Loader2 size={24} className="animate-spin" style={{ color: C.gold, margin: "0 auto 8px" }} />
+          <div className="text-xs" style={{ color: C.dim }}>Leyendo Excel madre...</div>
+        </Card>
+      )}
+
+      {!loading && pending.length > 0 && (
+        <Card className="p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <FileText size={14} style={{ color: C.amber }} />
+            <span className="text-xs tracking-widest uppercase font-bold" style={{ color: C.mute }}>Ordenadas por fecha de venta</span>
+          </div>
+          <div className="space-y-2">
+            {pending.map((p, idx) => {
+              const photo = findPhoto(p.tracker_id);
+              return (
+                <button
+                  key={p.tracker_id}
+                  onClick={() => setView({ name: "watch-detail", id: p.tracker_id })}
+                  className="w-full flex items-center gap-3 p-2.5 rounded-xl transition-all text-left"
+                  style={{ background: C.raised, border: `1px solid ${C.line}` }}
+                >
+                  <div className="w-11 h-11 rounded-lg overflow-hidden flex-shrink-0" style={{ border: `1px solid ${C.line}` }}>
+                    {photo ? (
+                      <img src={photo} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center" style={{ background: `${C.gold}11` }}>
+                        <Watch size={16} style={{ color: C.mute }} />
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-mono" style={{ color: C.mute }}>#{idx + 1}</span>
+                      <span className="text-sm font-semibold truncate" style={{ color: C.cream }}>{p.brand} {p.model}</span>
+                    </div>
+                    <div className="text-[10px] mt-0.5 truncate" style={{ color: C.dim }}>
+                      {p.sale_date} · {p.customer_name || "Cliente particular"} · {p.sale_channel}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <span className="text-sm font-semibold" style={{ color: C.gold }}>{euroExact(p.sale_price)}</span>
+                    <ChevronRight size={14} style={{ color: C.mute }} />
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </Card>
+      )}
+
+      {!loading && pending.length > 0 && (
+        <div className="p-3 rounded-xl text-[11px]" style={{ background: `${C.gold}08`, border: `1px solid ${C.gold}33`, color: C.dim }}>
+          Toca cada venta para ver su detalle y generar la factura. Se numerarán correlativamente en el orden en que las emitas (no por fecha de venta).
+        </div>
+      )}
+    </div>
+  );
+};
+
+
+// ═══════════════════════════════════════════════════════════
 // MAIN APP
 // ═══════════════════════════════════════════════════════════
 export default function App() {
@@ -3772,6 +4086,7 @@ export default function App() {
       case "expenses": return <ExpensesView state={state} dispatch={dispatch} setView={setView} />;
       case "settings": return <SettingsView state={state} dispatch={dispatch} syncStatus={syncStatus} syncPush={syncPush} syncPull={syncPull} setView={setView} />;
       case "tax-analysis": return <TaxAnalysisView state={state} setView={setView} />;
+      case "pending-invoices": return <PendingInvoicesView state={state} setView={setView} />;
       default: return <Dashboard state={state} setView={setView} />;
     }
   };
