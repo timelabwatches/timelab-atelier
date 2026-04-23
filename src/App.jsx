@@ -3154,6 +3154,21 @@ export default function App() {
   const [state, dispatch] = useReducer(reducer, initialState);
   const [view, setView] = useState({ name: "dashboard" });
   const [syncStatus, setSyncStatus] = useState({ status: "idle", error: null, lastSync: getLastSync() });
+  const [loadingPhase, setLoadingPhase] = useState(0);
+
+  // Rotate loading messages while syncing initial load
+  useEffect(() => {
+    if (state.loaded || syncStatus.status !== "syncing") return;
+    const phases = [
+      "Sincronizando desde Excel madre...",
+      "Recogiendo fotos nuevas...",
+      "Casi listo...",
+    ];
+    const timer = setInterval(() => {
+      setLoadingPhase(p => Math.min(p + 1, phases.length - 1));
+    }, 3500);
+    return () => clearInterval(timer);
+  }, [state.loaded, syncStatus.status]);
 
   // Sync: push local state to Apps Script
   const syncPush = useCallback(async () => {
@@ -3262,8 +3277,13 @@ export default function App() {
 
   if (!state.loaded) {
     const { url } = getGasConfig();
+    const syncingPhases = [
+      "Sincronizando desde Excel madre...",
+      "Recogiendo fotos nuevas...",
+      "Casi listo...",
+    ];
     const loadingText = url
-      ? (syncStatus.status === "syncing" ? "Sincronizando desde Excel madre..." : "Conectando...")
+      ? (syncStatus.status === "syncing" ? syncingPhases[loadingPhase] : "Conectando...")
       : "Cargando atelier...";
     return (
       <Shell>
