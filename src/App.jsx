@@ -14,7 +14,7 @@ import {
   Camera, Image as ImageIcon, TrendingDown, Bell, FileDown,
   MessageSquare, RotateCcw, Eye, Zap, PiggyBank, History, Link2,
   Activity, CircleDot, ExternalLink, Wand2, Phone, Building2,
-  Cloud, CloudOff, RefreshCw, Link, Loader2
+  Cloud, CloudOff, RefreshCw, Link, Loader2, Calculator
 } from "lucide-react";
 import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
@@ -886,6 +886,71 @@ const Dashboard = ({ state, setView, syncStatus }) => {
           </div>
         </Card>
       )}
+
+      {/* Traffic lights — KPI thresholds */}
+      <Card className="p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Activity size={14} style={{ color: C.gold }} />
+          <span className="text-xs tracking-widest uppercase font-bold" style={{ color: C.mute }}>Semáforo KPI</span>
+        </div>
+        <div className="space-y-2.5">
+          {(() => {
+            const lights = [
+              { label: "Ritmo ventas", value: `${kpis.pace.toFixed(2)} ops/día`, color: kpis.pace >= 1.5 ? C.jade : kpis.pace >= 1.0 ? C.amber : C.ruby, target: "≥1.5" },
+              { label: "ROI medio", value: `${pct(kpis.avg_roi)}`, color: kpis.avg_roi >= 0.85 ? C.jade : kpis.avg_roi >= 0.70 ? C.amber : C.ruby, target: "≥85%" },
+              { label: "Stock añejo +45d", value: `${kpis.aged_count} pzs`, color: kpis.aged_count === 0 ? C.jade : kpis.aged_count <= 3 ? C.amber : C.ruby, target: "0 idealmente" },
+              { label: "Capital bloqueado", value: euro(kpis.aged_value), color: kpis.aged_value < 1000 ? C.jade : kpis.aged_value < 3000 ? C.amber : C.ruby, target: "<€1000" },
+            ];
+            return lights.map(l => (
+              <div key={l.label} className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                  <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: l.color, boxShadow: `0 0 8px ${l.color}` }} />
+                  <span className="text-xs truncate" style={{ color: C.dim }}>{l.label}</span>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <span className="text-[10px]" style={{ color: C.mute }}>obj {l.target}</span>
+                  <span className="text-sm font-semibold" style={{ color: l.color }}>{l.value}</span>
+                </div>
+              </div>
+            ));
+          })()}
+        </div>
+      </Card>
+
+      {/* Últimas 3 ventas con foto */}
+      {(() => {
+        const lastSales = sold
+          .filter(w => w.sale_date)
+          .sort((a, b) => (b.sale_date || "").localeCompare(a.sale_date || ""))
+          .slice(0, 3);
+        if (lastSales.length === 0) return null;
+        return (
+          <Card className="p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <ShoppingBag size={14} style={{ color: C.jade }} />
+              <span className="text-xs tracking-widest uppercase font-bold" style={{ color: C.mute }}>Últimas ventas</span>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {lastSales.map(w => (
+                <button key={w.id} onClick={() => setView({ name: "watch-detail", id: w.id })} className="text-left">
+                  <div className="aspect-square rounded-xl overflow-hidden mb-1.5" style={{ border: `1px solid ${C.jade}44` }}>
+                    {w.accounting_photo_url ? (
+                      <img src={w.accounting_photo_url} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center" style={{ background: `${C.jade}11` }}>
+                        <Watch size={20} style={{ color: C.jade }} />
+                      </div>
+                    )}
+                  </div>
+                  <div className="text-[10px] truncate font-semibold" style={{ color: C.cream }}>{w.brand}</div>
+                  <div className="text-[10px] truncate" style={{ color: C.dim }}>{w.model}</div>
+                  <div className="text-xs font-semibold mt-0.5" style={{ color: C.gold }}>{euroExact(w.sale_price)}</div>
+                </button>
+              ))}
+            </div>
+          </Card>
+        );
+      })()}
 
       {/* Ritmo Q2 chart */}
       {dailySales.length > 0 && (
@@ -2083,6 +2148,91 @@ const SalesView = ({ state, setView }) => {
         <StatCard label="Beneficio" value={euro(totals.profit)} sub={totals.count ? euro(totals.profit / Math.max(1, filtered.filter(w => w.status === "sold").length)) + "/op" : ""} icon={TrendingUp} accent={C.jade} />
       </div>
 
+      {/* Resumen mes actual vs anterior */}
+      {(() => {
+        const todayStr = today();
+        const thisMonth = todayStr.slice(0, 7);
+        const [y, m] = thisMonth.split("-").map(Number);
+        const prevDate = new Date(y, m - 2, 1);
+        const prevMonth = prevDate.toISOString().slice(0, 7);
+
+        const opsThis = state.watches.filter(w => w.status === "sold" && (w.sale_date || "").startsWith(thisMonth));
+        const opsPrev = state.watches.filter(w => w.status === "sold" && (w.sale_date || "").startsWith(prevMonth));
+
+        const revThis = opsThis.reduce((s, w) => s + (w.sale_price || 0) + (w.sale_shipping || 0), 0);
+        const revPrev = opsPrev.reduce((s, w) => s + (w.sale_price || 0) + (w.sale_shipping || 0), 0);
+
+        const profFn = (arr) => arr.reduce((s, w) => {
+          const rate = w.sale_channel === "Catawiki" ? state.settings.catawiki_commission
+            : w.sale_channel === "Chrono24" ? state.settings.chrono24_commission
+            : w.sale_channel === "Vinted" ? state.settings.vinted_commission : 0;
+          const commission = (w.sale_price || 0) * rate / 100 * 1.21;
+          const shipping = state.settings.envio_medio * 1.21;
+          return s + ((w.sale_price || 0) + (w.sale_shipping || 0) - (w.purchase_price || 0) - commission - shipping);
+        }, 0);
+        const profThis = profFn(opsThis);
+        const profPrev = profFn(opsPrev);
+
+        const delta = (cur, prev) => prev ? Math.round((cur / prev - 1) * 100) : (cur > 0 ? 100 : 0);
+        const revDelta = delta(revThis, revPrev);
+        const opsDelta = delta(opsThis.length, opsPrev.length);
+        const profDelta = delta(profThis, profPrev);
+
+        const months = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+        const thisLabel = months[m - 1];
+        const prevLabel = months[(m - 2 + 12) % 12];
+
+        // Daily sparkline this month
+        const daysThisMonth = {};
+        opsThis.forEach(w => {
+          const d = w.sale_date.slice(8, 10);
+          daysThisMonth[d] = (daysThisMonth[d] || 0) + 1;
+        });
+        const sparkData = Object.entries(daysThisMonth).sort().map(([d, n]) => ({ day: d, ventas: n }));
+
+        return (
+          <Card className="p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Calendar size={14} style={{ color: C.gold }} />
+                <span className="text-xs tracking-widest uppercase font-bold" style={{ color: C.mute }}>{thisLabel} {y}</span>
+              </div>
+              <span className="text-[10px]" style={{ color: C.dim }}>vs {prevLabel}</span>
+            </div>
+            <div className="grid grid-cols-3 gap-2 mb-3">
+              <div>
+                <div className="text-[10px]" style={{ color: C.mute }}>Ventas</div>
+                <div className="font-serif text-lg leading-tight" style={{ color: C.cream, fontFamily: "'Fraunces', serif" }}>{opsThis.length}</div>
+                <div className="text-[10px] font-semibold" style={{ color: opsDelta >= 0 ? C.jade : C.ruby }}>
+                  {opsDelta >= 0 ? "+" : ""}{opsDelta}%
+                </div>
+              </div>
+              <div>
+                <div className="text-[10px]" style={{ color: C.mute }}>Ingresos</div>
+                <div className="font-serif text-lg leading-tight" style={{ color: C.cream, fontFamily: "'Fraunces', serif" }}>{euro(revThis)}</div>
+                <div className="text-[10px] font-semibold" style={{ color: revDelta >= 0 ? C.jade : C.ruby }}>
+                  {revDelta >= 0 ? "+" : ""}{revDelta}%
+                </div>
+              </div>
+              <div>
+                <div className="text-[10px]" style={{ color: C.mute }}>Beneficio</div>
+                <div className="font-serif text-lg leading-tight" style={{ color: C.gold, fontFamily: "'Fraunces', serif" }}>{euro(profThis)}</div>
+                <div className="text-[10px] font-semibold" style={{ color: profDelta >= 0 ? C.jade : C.ruby }}>
+                  {profDelta >= 0 ? "+" : ""}{profDelta}%
+                </div>
+              </div>
+            </div>
+            {sparkData.length > 1 && (
+              <ResponsiveContainer width="100%" height={40}>
+                <BarChart data={sparkData}>
+                  <Bar dataKey="ventas" fill={C.gold} radius={[2, 2, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </Card>
+        );
+      })()}
+
       {/* Search */}
       <div className="flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: C.raised, border: `1px solid ${C.line}` }}>
         <Search size={14} style={{ color: C.mute }} />
@@ -2193,38 +2343,87 @@ const CustomersView = ({ state, setView }) => {
     const by = {};
     state.watches.filter(w => w.status === "sold" && w.customer_name).forEach(w => {
       const key = w.customer_name;
-      if (!by[key]) by[key] = { name: w.customer_name, country: w.customer_country, watches: [], total: 0, last_purchase: w.sale_date };
+      if (!by[key]) by[key] = { name: w.customer_name, country: w.customer_country, watches: [], total: 0, last_purchase: w.sale_date, first_purchase: w.sale_date };
       by[key].watches.push(w);
       by[key].total += (w.sale_price || 0) + (w.sale_shipping || 0);
       if (w.sale_date > by[key].last_purchase) by[key].last_purchase = w.sale_date;
+      if (w.sale_date < by[key].first_purchase) by[key].first_purchase = w.sale_date;
     });
     return Object.values(by).sort((a, b) => b.total - a.total);
   }, [state.watches]);
 
+  // Real customers (excluding the "Cliente particular" generic placeholder)
+  const realCustomers = customers.filter(c => c.name && !/cliente particular/i.test(c.name));
+
   const byCountry = useMemo(() => {
     const by = {};
-    customers.forEach(c => {
+    realCustomers.forEach(c => {
       const k = c.country || "?";
       if (!by[k]) by[k] = { country: k, count: 0, revenue: 0 };
       by[k].count++;
       by[k].revenue += c.total;
     });
     return Object.values(by).sort((a, b) => b.revenue - a.revenue);
-  }, [customers]);
+  }, [realCustomers]);
 
-  const repeat = customers.filter(c => c.watches.length > 1);
+  const repeat = realCustomers.filter(c => c.watches.length > 1);
+  const repeatRate = realCustomers.length > 0 ? (repeat.length / realCustomers.length) * 100 : 0;
+  const avgTicket = realCustomers.length ? realCustomers.reduce((s, c) => s + c.total, 0) / realCustomers.length : 0;
+  const avgLTV = realCustomers.length ? realCustomers.reduce((s, c) => s + c.total, 0) / realCustomers.length : 0;
+  const avgItemsPerCustomer = realCustomers.length ? realCustomers.reduce((s, c) => s + c.watches.length, 0) / realCustomers.length : 0;
 
   return (
     <div className="px-4 pb-24 pt-4 space-y-3">
       <div className="pt-2">
         <h1 className="font-serif text-3xl" style={{ color: C.cream, fontFamily: "'Fraunces', serif", fontWeight: 300 }}>Clientes</h1>
-        <div className="text-xs mt-1" style={{ color: C.dim }}>{customers.length} únicos · {repeat.length} repetidores</div>
+        <div className="text-xs mt-1" style={{ color: C.dim }}>{realCustomers.length} únicos · {repeat.length} repetidores · {repeatRate.toFixed(0)}% tasa repetición</div>
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <StatCard label="Ticket medio" value={euro(customers.length ? customers.reduce((s, c) => s + c.total, 0) / customers.length : 0)} icon={Euro} accent={C.gold} />
+        <StatCard label="Ticket medio" value={euro(avgTicket)} sub={`${avgItemsPerCustomer.toFixed(1)} uds/cliente`} icon={Euro} accent={C.gold} />
         <StatCard label="Países" value={byCountry.length} sub={byCountry[0]?.country + " top"} icon={MapPin} accent={C.copper} />
       </div>
+
+      {/* LTV segmentation */}
+      {realCustomers.length > 0 && (() => {
+        const segments = {
+          vip: realCustomers.filter(c => c.total >= 500),
+          regular: realCustomers.filter(c => c.total >= 200 && c.total < 500),
+          casual: realCustomers.filter(c => c.total < 200),
+        };
+        const vipRev = segments.vip.reduce((s, c) => s + c.total, 0);
+        const regRev = segments.regular.reduce((s, c) => s + c.total, 0);
+        const casRev = segments.casual.reduce((s, c) => s + c.total, 0);
+        const totalRev = vipRev + regRev + casRev;
+        return (
+          <Card className="p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <TrendingUp size={14} style={{ color: C.gold }} />
+              <span className="text-xs tracking-widest uppercase font-bold" style={{ color: C.mute }}>Segmentación LTV</span>
+            </div>
+            <div className="space-y-2">
+              {[
+                { label: "VIP ≥€500", count: segments.vip.length, rev: vipRev, color: C.gold },
+                { label: "Regular €200-499", count: segments.regular.length, rev: regRev, color: C.jade },
+                { label: "Casual <€200", count: segments.casual.length, rev: casRev, color: C.mute },
+              ].map(s => {
+                const pct = totalRev ? (s.rev / totalRev) * 100 : 0;
+                return (
+                  <div key={s.label}>
+                    <div className="flex items-center justify-between text-xs mb-1">
+                      <span style={{ color: C.cream }}>{s.label}</span>
+                      <span style={{ color: C.mute }}>{s.count} · {euro(s.rev)} ({pct.toFixed(0)}%)</span>
+                    </div>
+                    <div className="h-1.5 rounded-full overflow-hidden" style={{ background: C.line }}>
+                      <div style={{ width: `${pct}%`, background: s.color, height: "100%" }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+        );
+      })()}
 
       <Card className="p-4">
         <div className="text-xs tracking-widest uppercase font-bold mb-3" style={{ color: C.mute }}>Por país</div>
@@ -2238,10 +2437,36 @@ const CustomersView = ({ state, setView }) => {
         </div>
       </Card>
 
+      {repeat.length > 0 && (
+        <Card className="p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-xs tracking-widest uppercase font-bold" style={{ color: C.jade }}>Repetidores</div>
+            <span className="text-[10px]" style={{ color: C.mute }}>{repeat.length} clientes</span>
+          </div>
+          <div className="space-y-1">
+            {repeat.slice(0, 10).map(c => (
+              <button key={c.name} onClick={() => setView({ name: "customer-detail", customer: c.name })}
+                className="w-full text-left p-2 rounded-lg transition-all hover:bg-black/20">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm truncate" style={{ color: C.cream }}>{c.name}</span>
+                      <Chip color={C.jade}>×{c.watches.length}</Chip>
+                    </div>
+                    <div className="text-xs" style={{ color: C.mute }}>{c.country} · LTV {euro(c.total)}</div>
+                  </div>
+                  <ChevronRight size={14} style={{ color: C.mute }} />
+                </div>
+              </button>
+            ))}
+          </div>
+        </Card>
+      )}
+
       <Card className="p-4">
         <div className="text-xs tracking-widest uppercase font-bold mb-3" style={{ color: C.mute }}>Top compradores</div>
         <div className="space-y-1">
-          {customers.slice(0, 15).map(c => (
+          {realCustomers.slice(0, 15).map(c => (
             <button key={c.name} onClick={() => setView({ name: "customer-detail", customer: c.name })}
               className="w-full text-left p-2 rounded-lg transition-all hover:bg-black/20">
               <div className="flex items-center justify-between gap-2">
@@ -3063,6 +3288,7 @@ ${stock.sort((a,b) => daysBetween(b.purchase_date, today()) - daysBetween(a.purc
       <Card className="p-4 space-y-3">
         <div className="text-xs tracking-widest uppercase font-bold" style={{ color: C.mute }}>Herramientas</div>
         <Btn onClick={() => setView({ name: "comps" })} icon={TrendingUp} variant="secondary" full>Comparables de precio</Btn>
+        <Btn onClick={() => setView({ name: "tax-analysis" })} icon={Calculator} variant="secondary" full>Análisis Autónomo vs SL</Btn>
       </Card>
 
       <Card className="p-4 space-y-3">
@@ -3148,9 +3374,231 @@ const BottomNav = ({ view, setView }) => {
 };
 
 // ═══════════════════════════════════════════════════════════
-// MAIN APP
+// VIEW: TAX ANALYSIS — Autónomo REBU vs SL REBU
 // ═══════════════════════════════════════════════════════════
-export default function App() {
+const TaxAnalysisView = ({ state, setView }) => {
+  // Build projection from actual Q1+Q2 data
+  const sold = state.watches.filter(w => w.status === "sold");
+  const actualRevenue = sold.reduce((s, w) => s + (w.sale_price || 0) + (w.sale_shipping || 0), 0);
+  const actualCost = sold.reduce((s, w) => s + (w.purchase_price || 0), 0);
+  const actualProfit = sold.reduce((s, w) => {
+    const rate = w.sale_channel === "Catawiki" ? state.settings.catawiki_commission
+      : w.sale_channel === "Chrono24" ? state.settings.chrono24_commission
+      : w.sale_channel === "Vinted" ? state.settings.vinted_commission : 0;
+    const commission = (w.sale_price || 0) * rate / 100 * 1.21;
+    const shipping = state.settings.envio_medio * 1.21;
+    return s + ((w.sale_price || 0) + (w.sale_shipping || 0) - (w.purchase_price || 0) - commission - shipping);
+  }, 0);
+
+  // Days elapsed this year to project annual
+  const today_ = new Date();
+  const yearStart = new Date(today_.getFullYear(), 0, 1);
+  const daysElapsed = Math.max(1, Math.round((today_ - yearStart) / (1000 * 60 * 60 * 24)));
+  const annualMultiplier = 365 / daysElapsed;
+
+  const projectedRevenue = actualRevenue * annualMultiplier;
+  const projectedProfit = actualProfit * annualMultiplier;
+
+  // Fixed costs annual
+  const fixedCostsAnnual = 220 * 12; // Gestensa + TGSS + ChatGPT + materiales
+
+  // Adjustable inputs
+  const [benefitAnnual, setBenefitAnnual] = useState(Math.round(projectedProfit - fixedCostsAnnual));
+  const [personalExpense, setPersonalExpense] = useState(15000); // Lo que necesitas vivir
+
+  // AUTONOMO calculation (REBU)
+  const autonomoCalc = useMemo(() => {
+    const tgssAnnual = 88.56 * 12; // Cuota reducida tarifa primer año
+    const netPreIRPF = benefitAnnual - tgssAnnual;
+
+    // IRPF progressive (España 2026, escala estatal+autonómica aproximada)
+    let irpf = 0;
+    const brackets = [
+      [0, 12450, 0.19],
+      [12450, 20200, 0.24],
+      [20200, 35200, 0.30],
+      [35200, 60000, 0.37],
+      [60000, 300000, 0.45],
+      [300000, Infinity, 0.47],
+    ];
+    let remaining = Math.max(0, netPreIRPF);
+    for (const [lo, hi, rate] of brackets) {
+      if (remaining <= 0) break;
+      const taxable = Math.min(remaining, hi - lo);
+      if (taxable > 0) {
+        irpf += taxable * rate;
+        remaining -= taxable;
+      }
+    }
+
+    const netFinal = netPreIRPF - irpf;
+    return { tgss: tgssAnnual, irpf, netPreIRPF, netFinal, totalTax: tgssAnnual + irpf };
+  }, [benefitAnnual]);
+
+  // SL REBU calculation
+  const slCalc = useMemo(() => {
+    const salaryAnnual = personalExpense; // lo que te pagas como nómina
+    const tgssEmpresaRate = 0.30; // Aportación empresa ~30%
+    const tgssEmpresa = salaryAnnual * tgssEmpresaRate;
+    const irpfNomina = (() => {
+      // Retención aproximada según salario
+      let net = salaryAnnual;
+      let irpf = 0;
+      const brackets = [
+        [0, 12450, 0.19],
+        [12450, 20200, 0.24],
+        [20200, 35200, 0.30],
+        [35200, 60000, 0.37],
+      ];
+      let remaining = salaryAnnual;
+      for (const [lo, hi, rate] of brackets) {
+        if (remaining <= 0) break;
+        const taxable = Math.min(remaining, hi - lo);
+        if (taxable > 0) {
+          irpf += taxable * rate;
+          remaining -= taxable;
+        }
+      }
+      return irpf;
+    })();
+
+    // Beneficio SL antes IS = beneficio - salario - tgssEmpresa
+    const beneficioPreIS = benefitAnnual - salaryAnnual - tgssEmpresa;
+    // IS: 15% primeros 2 años si es empresa nueva, luego 25%. Uso 15% para primer año conservador
+    const isRate = 0.15;
+    const impuestoSociedades = Math.max(0, beneficioPreIS * isRate);
+    const beneficioPostIS = beneficioPreIS - impuestoSociedades;
+
+    // Dividendos: tributan en IRPF renta del ahorro (19% hasta 6000, 21% hasta 50000, 23% hasta 200000)
+    const dividendosTax = (() => {
+      const amount = Math.max(0, beneficioPostIS);
+      let tax = 0;
+      if (amount <= 6000) tax = amount * 0.19;
+      else if (amount <= 50000) tax = 6000 * 0.19 + (amount - 6000) * 0.21;
+      else if (amount <= 200000) tax = 6000 * 0.19 + 44000 * 0.21 + (amount - 50000) * 0.23;
+      else tax = 6000 * 0.19 + 44000 * 0.21 + 150000 * 0.23 + (amount - 200000) * 0.27;
+      return tax;
+    })();
+
+    const slExtras = 800; // Gestoría SL más cara + IAE + constitución amortizada
+    const totalTax = irpfNomina + tgssEmpresa + impuestoSociedades + dividendosTax + slExtras;
+    const netFinal = benefitAnnual - totalTax;
+
+    return {
+      salary: salaryAnnual,
+      tgssEmpresa,
+      irpfNomina,
+      beneficioPreIS,
+      impuestoSociedades,
+      beneficioPostIS,
+      dividendosTax,
+      slExtras,
+      totalTax,
+      netFinal,
+    };
+  }, [benefitAnnual, personalExpense]);
+
+  const winner = autonomoCalc.netFinal >= slCalc.netFinal ? "autonomo" : "sl";
+  const diff = Math.abs(autonomoCalc.netFinal - slCalc.netFinal);
+
+  return (
+    <div className="px-4 pb-24 pt-4 space-y-3">
+      <div className="pt-2">
+        <button onClick={() => setView({ name: "settings" })} className="flex items-center gap-1 text-xs mb-2" style={{ color: C.mute }}>
+          <ChevronRight size={12} style={{ transform: "rotate(180deg)" }} /> Ajustes
+        </button>
+        <h1 className="font-serif text-3xl" style={{ color: C.cream, fontFamily: "'Fraunces', serif", fontWeight: 300 }}>Autónomo vs SL</h1>
+        <div className="text-xs mt-1" style={{ color: C.dim }}>Análisis con datos reales Q1+Q2 · proyección anual</div>
+      </div>
+
+      {/* Actual data summary */}
+      <Card className="p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <BarChart3 size={14} style={{ color: C.gold }} />
+          <span className="text-xs tracking-widest uppercase font-bold" style={{ color: C.mute }}>Datos reales observados</span>
+        </div>
+        <div className="space-y-1.5 text-sm">
+          <div className="flex justify-between">
+            <span style={{ color: C.dim }}>Ventas registradas</span>
+            <span style={{ color: C.cream }}>{sold.length} ops en {daysElapsed} días</span>
+          </div>
+          <div className="flex justify-between">
+            <span style={{ color: C.dim }}>Facturación observada</span>
+            <span style={{ color: C.cream }}>{euro(actualRevenue)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span style={{ color: C.dim }}>Beneficio observado</span>
+            <span style={{ color: C.gold }}>{euro(actualProfit)}</span>
+          </div>
+          <div className="flex justify-between border-t pt-1.5 mt-1.5" style={{ borderColor: C.line }}>
+            <span style={{ color: C.dim }}>Proyección anual (×{annualMultiplier.toFixed(1)})</span>
+            <span style={{ color: C.gold, fontWeight: 600 }}>{euro(projectedProfit)}</span>
+          </div>
+        </div>
+      </Card>
+
+      {/* Adjustable inputs */}
+      <Card className="p-4">
+        <div className="text-xs tracking-widest uppercase font-bold mb-3" style={{ color: C.mute }}>Ajusta los parámetros</div>
+        <Field label={`Beneficio anual objetivo (€) — proyectado ${euro(projectedProfit - fixedCostsAnnual)}`} type="number" value={benefitAnnual} onChange={(v) => setBenefitAnnual(Number(v) || 0)} />
+        <Field label="Salario/dinero que necesitas vivir (€/año)" type="number" value={personalExpense} onChange={(v) => setPersonalExpense(Number(v) || 0)} />
+        <div className="text-[10px] mt-2" style={{ color: C.mute }}>
+          El "beneficio anual" ya resta gastos generales (Gestensa, TGSS, etc).
+          El "salario" solo aplica en SL: es lo que te pagas a ti mismo como nómina.
+        </div>
+      </Card>
+
+      {/* Comparison cards */}
+      <div className="grid grid-cols-2 gap-3">
+        <Card className="p-4" style={{ border: winner === "autonomo" ? `2px solid ${C.gold}` : `1px solid ${C.line}` }}>
+          <div className="text-[10px] tracking-widest uppercase font-bold mb-2" style={{ color: winner === "autonomo" ? C.gold : C.mute }}>
+            {winner === "autonomo" && "✓ "}AUTÓNOMO
+          </div>
+          <div className="font-serif text-2xl leading-none" style={{ color: C.cream, fontFamily: "'Fraunces', serif" }}>{euro(autonomoCalc.netFinal)}</div>
+          <div className="text-[10px] mt-1" style={{ color: C.dim }}>neto en mano/año</div>
+          <div className="space-y-1 mt-3 text-xs">
+            <div className="flex justify-between"><span style={{ color: C.mute }}>TGSS</span><span style={{ color: C.dim }}>-{euro(autonomoCalc.tgss)}</span></div>
+            <div className="flex justify-between"><span style={{ color: C.mute }}>IRPF</span><span style={{ color: C.dim }}>-{euro(autonomoCalc.irpf)}</span></div>
+          </div>
+        </Card>
+        <Card className="p-4" style={{ border: winner === "sl" ? `2px solid ${C.gold}` : `1px solid ${C.line}` }}>
+          <div className="text-[10px] tracking-widest uppercase font-bold mb-2" style={{ color: winner === "sl" ? C.gold : C.mute }}>
+            {winner === "sl" && "✓ "}SL
+          </div>
+          <div className="font-serif text-2xl leading-none" style={{ color: C.cream, fontFamily: "'Fraunces', serif" }}>{euro(slCalc.netFinal)}</div>
+          <div className="text-[10px] mt-1" style={{ color: C.dim }}>neto en mano/año</div>
+          <div className="space-y-1 mt-3 text-xs">
+            <div className="flex justify-between"><span style={{ color: C.mute }}>IS 15%</span><span style={{ color: C.dim }}>-{euro(slCalc.impuestoSociedades)}</span></div>
+            <div className="flex justify-between"><span style={{ color: C.mute }}>TGSS empr</span><span style={{ color: C.dim }}>-{euro(slCalc.tgssEmpresa)}</span></div>
+            <div className="flex justify-between"><span style={{ color: C.mute }}>IRPF nómina</span><span style={{ color: C.dim }}>-{euro(slCalc.irpfNomina)}</span></div>
+            <div className="flex justify-between"><span style={{ color: C.mute }}>Dividendos</span><span style={{ color: C.dim }}>-{euro(slCalc.dividendosTax)}</span></div>
+          </div>
+        </Card>
+      </div>
+
+      {/* Winner message */}
+      <Card className="p-4" style={{ background: `linear-gradient(135deg, ${C.gold}11, ${C.jade}08)`, border: `1px solid ${C.gold}55` }}>
+        <div className="text-xs tracking-widest uppercase font-bold mb-2" style={{ color: C.gold }}>Veredicto</div>
+        <div className="text-sm" style={{ color: C.cream }}>
+          Con tu beneficio anual de <b>{euro(benefitAnnual)}</b>, {winner === "autonomo" ? "sigue siendo más rentable ser autónomo" : "compensa pasar a SL"} por una diferencia de <b style={{ color: C.gold }}>{euro(diff)}</b>/año.
+        </div>
+      </Card>
+
+      {/* Caveat */}
+      <Card className="p-4">
+        <div className="text-xs tracking-widest uppercase font-bold mb-2" style={{ color: C.mute }}>Consideraciones no fiscales</div>
+        <div className="space-y-2 text-xs" style={{ color: C.dim }}>
+          <div><b style={{ color: C.cream }}>A favor de SL:</b> separación patrimonial, imagen corporativa ante clientes B2B (Chrono24 alto ticket, subastas grandes), posibilidad de contratar empleados de forma limpia.</div>
+          <div><b style={{ color: C.cream }}>A favor de Autónomo:</b> simplicidad, menos burocracia, ahorra ~€800-1000/año de gestoría adicional, no hay que constituir sociedad (~€400 + tiempo).</div>
+          <div><b style={{ color: C.cream }}>Umbral común:</b> SL empieza a compensar claramente a partir de ~€35-40k beneficio anual sostenido.</div>
+          <div className="pt-2" style={{ color: C.mute }}>Estos números son aproximados. Confirma siempre con Gestensa antes de decidir.</div>
+        </div>
+      </Card>
+    </div>
+  );
+};
+
+
   const [state, dispatch] = useReducer(reducer, initialState);
   const [view, setView] = useState({ name: "dashboard" });
   const [syncStatus, setSyncStatus] = useState({ status: "idle", error: null, lastSync: getLastSync() });
@@ -3319,6 +3767,7 @@ export default function App() {
       case "comps": return <CompsView state={state} dispatch={dispatch} setView={setView} />;
       case "expenses": return <ExpensesView state={state} dispatch={dispatch} setView={setView} />;
       case "settings": return <SettingsView state={state} dispatch={dispatch} syncStatus={syncStatus} syncPush={syncPush} syncPull={syncPull} setView={setView} />;
+      case "tax-analysis": return <TaxAnalysisView state={state} setView={setView} />;
       default: return <Dashboard state={state} setView={setView} />;
     }
   };
