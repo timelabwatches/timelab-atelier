@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useReducer, useCallback } from "react";
 import {
-  getGasConfig, setGasConfig, pingGas, pullFromGas, pushToGas,
+  getGasConfig, setGasConfig, pingGas, pullFromGas, pullWithSyncFromGas, syncFromMasterGas, pushToGas,
   uploadPhotoToGas, deletePhotoFromGas, queueOp, drainQueue,
   getLastSync, setLastSync,
 } from "./storage.js";
@@ -2833,22 +2833,21 @@ const SyncPanel = ({ syncStatus, syncPush, syncPull }) => {
       )}
 
       {gas.url && (
-        <div className="grid grid-cols-2 gap-2 pt-2">
+        <div className="pt-2">
           <Btn onClick={async () => {
-            if (!confirm("¿Sobrescribir datos locales con los de la nube?")) return;
+            if (!confirm("Esto sobrescribirá el CRM con los datos actuales del Excel madre. ¿Continuar?")) return;
             const r = await syncPull();
             if (!r.ok) alert("Error: " + r.error);
-          }} icon={Download} variant="ghost">Pull nube → local</Btn>
-          <Btn onClick={async () => {
-            const r = await syncPush();
-            if (!r.ok) alert("Error: " + r.error);
-          }} icon={Upload} variant="ghost">Push local → nube</Btn>
+            else alert("Sincronizado desde Excel madre");
+          }} icon={Download} variant="primary" className="w-full">
+            Sincronizar desde Excel madre
+          </Btn>
         </div>
       )}
 
       <div className="text-[10px] leading-relaxed pt-2" style={{ color: C.mute }}>
-        <p>Los datos se sincronizan automáticamente 3s después de cada cambio. Las fotos suben en segundo plano.</p>
-        <p className="mt-1">Configura tu Apps Script siguiendo las instrucciones del README (apps-script/Code.gs).</p>
+        <p>El Excel madre es la fuente de verdad. Al abrir el Atelier, los datos se sincronizan automáticamente desde el Excel.</p>
+        <p className="mt-1">Pulsa "Sincronizar desde Excel madre" para refrescar manualmente sin recargar la app.</p>
       </div>
     </div>
   );
@@ -3180,13 +3179,13 @@ export default function App() {
     }
   }, [state]);
 
-  // Sync: pull remote state and replace local
+  // Sync: pull remote state and replace local (con sync previo desde Excel madre)
   const syncPull = useCallback(async () => {
     const { url } = getGasConfig();
     if (!url) return { ok: false, error: "no_config" };
     setSyncStatus({ status: "syncing", error: null, lastSync: getLastSync() });
     try {
-      const remote = await pullFromGas();
+      const remote = await pullWithSyncFromGas();
       if (remote && remote.watches) {
         dispatch({ type: "LOAD", payload: { ...remote, loaded: true } });
         setLastSync(new Date());
@@ -3205,11 +3204,12 @@ export default function App() {
   useEffect(() => {
     (async () => {
       try {
-        // Try Apps Script first if configured
+        // Try Apps Script first if configured — with sync from Excel madre
         const { url } = getGasConfig();
         if (url) {
           try {
-            const remote = await pullFromGas();
+            setSyncStatus({ status: "syncing", error: null, lastSync: getLastSync() });
+            const remote = await pullWithSyncFromGas();
             if (remote && remote.watches) {
               dispatch({ type: "LOAD", payload: { ...remote, loaded: true } });
               setLastSync(new Date());
@@ -3217,7 +3217,7 @@ export default function App() {
               return;
             }
           } catch (e) {
-            console.warn("[initial pull failed, falling back to local]", e.message);
+            console.warn("[initial pull+sync failed, falling back to local]", e.message);
             setSyncStatus({ status: "error", error: e.message, lastSync: getLastSync() });
           }
         }
@@ -3252,15 +3252,19 @@ export default function App() {
   }, [state.watches, state.opportunities, state.price_comps, state.expenses, state.customer_notes, state.settings, state.loaded]);
 
   // Debounced remote push (3s after last change)
+  // Auto-push DESHABILITADO: el Excel madre es la fuente de verdad.
+  // Cualquier cambio local en el CRM se sobrescribe al siguiente sync.
+  // (Dejamos el useEffect por si en el futuro queremos volver a bidireccional)
   useEffect(() => {
     if (!state.loaded) return;
-    const { url } = getGasConfig();
-    if (!url) return;
-    const timer = setTimeout(() => { syncPush(); }, 3000);
-    return () => clearTimeout(timer);
-  }, [state.watches, state.opportunities, state.price_comps, state.expenses, state.customer_notes, state.settings, state.loaded, syncPush]);
+    // no-op
+  }, [state.watches, state.opportunities, state.price_comps, state.expenses, state.customer_notes, state.settings, state.loaded]);
 
   if (!state.loaded) {
+    const { url } = getGasConfig();
+    const loadingText = url
+      ? (syncStatus.status === "syncing" ? "Sincronizando desde Excel madre..." : "Conectando...")
+      : "Cargando atelier...";
     return (
       <Shell>
         <div className="min-h-screen flex items-center justify-center">
@@ -3272,7 +3276,7 @@ export default function App() {
               <Watch size={24} style={{ color: C.gold }} />
             </div>
             <div className="font-serif text-lg" style={{ color: C.cream, fontFamily: "'Fraunces', serif" }}>TIMELAB</div>
-            <div className="text-[10px] tracking-widest uppercase mt-1" style={{ color: C.mute }}>Cargando atelier...</div>
+            <div className="text-[10px] tracking-widest uppercase mt-1" style={{ color: C.mute }}>{loadingText}</div>
           </div>
         </div>
       </Shell>
