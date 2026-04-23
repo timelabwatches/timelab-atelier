@@ -107,6 +107,17 @@ export const pullFromGas = async () => {
   return data.state || null;
 };
 
+// Pull con sync previo: lee Excel madre, sobreescribe Sheet CRM y devuelve estado
+export const pullWithSyncFromGas = async () => {
+  const data = await callGas("pull_with_sync");
+  return data.state || null;
+};
+
+// Solo dispara el sync desde Excel madre (sin devolver estado)
+export const syncFromMasterGas = async () => {
+  return await callGas("sync_from_master");
+};
+
 export const pushToGas = async (payload) => {
   return await callGas("push", { payload });
 };
