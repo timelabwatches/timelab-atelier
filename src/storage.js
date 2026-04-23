@@ -131,6 +131,19 @@ export const deletePhotoFromGas = async (watchId, photoId) => {
   return await callGas("delete_photo", { watchId, photoId });
 };
 
+// ─── Invoice system (v10) ───────────────────────────────────────────
+export const invoicePreviewGas = async (params) => {
+  return await callGas("invoice_preview", { params });
+};
+
+export const invoiceGenerateGas = async (params) => {
+  return await callGas("invoice_generate", { params });
+};
+
+export const listPendingInvoicesGas = async () => {
+  return await callGas("invoice_pending_list");
+};
+
 // ─── Sync queue (operations to retry if offline) ────────────────────
 const QUEUE_KEY = "timelab:sync:queue";
 
