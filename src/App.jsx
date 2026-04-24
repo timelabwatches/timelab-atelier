@@ -210,7 +210,7 @@ const DEFAULT_SETTINGS = {
   irpf_rate: 22,
   catawiki_commission: 12.5,
   chrono24_commission: 6.5,
-  vinted_commission: 5,
+  vinted_commission: 0,
   target_roi_min: 25,
   target_profit_min: 120,
   target_ticket: 180,
@@ -536,7 +536,13 @@ const initialState = {
 
 function reducer(state, action) {
   switch (action.type) {
-    case "LOAD": return { ...state, ...action.payload, loaded: true };
+    case "LOAD": return {
+      ...state,
+      ...action.payload,
+      // Merge DEFAULT_SETTINGS with loaded settings so new defaults apply for missing keys
+      settings: { ...DEFAULT_SETTINGS, ...(action.payload.settings || {}) },
+      loaded: true
+    };
     case "ADD_WATCH": return { ...state, watches: [action.watch, ...state.watches] };
     case "UPDATE_WATCH": return { ...state, watches: state.watches.map(w => w.id === action.watch.id ? action.watch : w) };
     case "DELETE_WATCH": return { ...state, watches: state.watches.filter(w => w.id !== action.id) };
@@ -731,26 +737,137 @@ const Dashboard = ({ state, setView, syncStatus }) => {
     const returnedAll = state.watches.filter(w => w.status === "returned");
     const todayDate = today();
     const daysQ2 = Math.max(1, daysBetween(q2start, todayDate) + 1);
-    const revenue = soldQ2.reduce((s, w) => s + (w.sale_price || 0) + (w.sale_shipping || 0), 0);
-    const cost = soldQ2.reduce((s, w) => s + (w.purchase_price || 0), 0);
-    const commission = soldQ2.reduce((s, w) => {
-      const rate = w.sale_channel === "Catawiki" ? settings.catawiki_commission
-        : w.sale_channel === "Chrono24" ? settings.chrono24_commission
-        : w.sale_channel === "Vinted" ? settings.vinted_commission : 0;
-      return s + (w.sale_price || 0) * rate / 100 * 1.21;
-    }, 0);
-    const shipping = soldQ2.length * settings.envio_medio * 1.21;
-    const profit = revenue - cost - commission - shipping;
+
+    // Helpers: if Excel madre fields present, use them; else compute with defaults
+    const getComisionBase = (w) => {
+      if (w.comision_canal_base != null) return Number(w.comision_canal_base) || 0;
+      // Fallback: derive like the Excel does for Catawiki (N*12.5% + 3)
+      if (w.sale_channel === "Catawiki") return (w.sale_price || 0) * 0.125 + 3;
+      const rate = w.sale_channel === "Chrono24" ? settings.chrono24_commission
+                 : w.sale_channel === "Vinted" ? settings.vinted_commission : 0;
+      return (w.sale_price || 0) * rate / 100;
+    };
+    const getIvaComision = (w) => {
+      if (w.iva_comision != null) return Number(w.iva_comision) || 0;
+      return getComisionBase(w) * 0.21;
+    };
+    const getEnvioVentaBase = (w) => {
+      return Number(w.envio_venta_base) || 0; // si está vacío, 0 (no promedio)
+    };
+    const getIvaEnvioVenta = (w) => {
+      if (w.iva_envio_venta != null) return Number(w.iva_envio_venta) || 0;
+      return getEnvioVentaBase(w) * 0.21;
+    };
+    const getIvaRepercutido = (w) => {
+      if (w.iva_repercutido != null) return Number(w.iva_repercutido) || 0;
+      // Fallback REBU: margen × 21/121; GENERAL: total × 21/121
+      const total = (w.sale_price || 0) + (w.sale_shipping || 0);
+      if ((w.regimen_iva || "").toUpperCase() === "REBU") {
+        const margen = total - (w.purchase_price || 0);
+        return margen > 0 ? margen * 21 / 121 : 0;
+      }
+      return total * 21 / 121;
+    };
+    const getIvaSoportadoOp = (w) => {
+      return Number(w.iva_soportado_op) || 0; // col P
+    };
+    const getMargenBruto = (w) => {
+      if (w.margen_bruto != null) return Number(w.margen_bruto) || 0;
+      // U = (N+O) - Q - S - L
+      return (w.sale_price || 0) + (w.sale_shipping || 0)
+           - getComisionBase(w) - getEnvioVentaBase(w) - (w.purchase_price || 0);
+    };
+    const getIvaNetoOp = (w) => {
+      // W = V - R - T - P
+      return getIvaRepercutido(w) - getIvaComision(w) - getIvaEnvioVenta(w) - getIvaSoportadoOp(w);
+    };
+    const getBeneficioOp = (w) => {
+      if (w.beneficio_neto_pre_irpf != null) return Number(w.beneficio_neto_pre_irpf) || 0;
+      // X = U - W
+      return getMargenBruto(w) - getIvaNetoOp(w);
+    };
+
+    // Aggregates across soldQ2
+    const precio_plus_envio = soldQ2.reduce((s, w) => s + (w.sale_price || 0) + (w.sale_shipping || 0), 0);
+    const cost_compra = soldQ2.reduce((s, w) => s + (w.purchase_price || 0), 0);
+    const comision_base_sum = soldQ2.reduce((s, w) => s + getComisionBase(w), 0);
+    const iva_comision_sum = soldQ2.reduce((s, w) => s + getIvaComision(w), 0);
+    const envio_venta_base_sum = soldQ2.reduce((s, w) => s + getEnvioVentaBase(w), 0);
+    const iva_envio_venta_sum = soldQ2.reduce((s, w) => s + getIvaEnvioVenta(w), 0);
+    const iva_repercutido_sum = soldQ2.reduce((s, w) => s + getIvaRepercutido(w), 0);
+    const iva_soportado_op_sum = soldQ2.reduce((s, w) => s + getIvaSoportadoOp(w), 0);
+    const margen_bruto_sum = soldQ2.reduce((s, w) => s + getMargenBruto(w), 0);
+    const iva_neto_op_sum = soldQ2.reduce((s, w) => s + getIvaNetoOp(w), 0);
+    const beneficio_op_sum = soldQ2.reduce((s, w) => s + getBeneficioOp(w), 0);
+
+    // Envíos pendientes de imputar
+    const envios_pendientes = soldQ2.filter(w => getEnvioVentaBase(w) === 0).length;
+
+    // Expenses del periodo (solo deducibles)
+    const expensesQ2 = (state.expenses || []).filter(e => e.date >= q2start && e.deducible);
+    const gastos_base_sum = expensesQ2.reduce((s, e) => s + (e.base || 0), 0);
+    const gastos_iva_sum = expensesQ2.reduce((s, e) => s + (e.iva || 0), 0);
+    const gastos_total_sum = expensesQ2.reduce((s, e) => s + (e.total || 0), 0);
+
+    // --- Métricas finales ---
+
+    // FACTURACIÓN (según definición de Joseba): lo que aterriza en cuenta
+    // = precio + envío − comisión con IVA
+    const facturacion = precio_plus_envio - comision_base_sum - iva_comision_sum;
+
+    // IVA A PAGAR A HACIENDA (trimestral, global)
+    // = IVA repercutido − IVA soportado (op + gastos deducibles)
+    const iva_soportado_total = iva_comision_sum + iva_envio_venta_sum + iva_soportado_op_sum + gastos_iva_sum;
+    const iva_a_pagar = iva_repercutido_sum - iva_soportado_total;
+
+    // BENEFICIO PRE-IRPF (igual que Excel madre)
+    // = Σ(beneficio_neto_op) − Σ(gastos_base)
+    const beneficio_pre_irpf = beneficio_op_sum - gastos_base_sum;
+
+    // IRPF estimado
+    const irpf_rate_dec = (settings.irpf_rate || 20) / 100;
+    const irpf_estimado = Math.max(0, beneficio_pre_irpf) * irpf_rate_dec;
+
+    // BENEFICIO FINAL
+    const beneficio_final = beneficio_pre_irpf - irpf_estimado;
+
+    // Metrics legacy para el resto del código
+    const revenue = precio_plus_envio; // sigue usándose en algunas vistas
     const avg_roi = soldQ2.length ? soldQ2.reduce((s, w) => s + ((w.sale_price - w.purchase_price) / w.purchase_price), 0) / soldQ2.length : 0;
     const stock_value = stock.reduce((s, w) => s + (w.purchase_price || 0), 0);
     const aged = stock.filter(w => daysBetween(w.purchase_date, todayDate) > 45);
     const aged_value = aged.reduce((s, w) => s + (w.purchase_price || 0), 0);
     const lost_value = lostAll.reduce((s, w) => s + (w.purchase_price || 0), 0);
+
     return {
       ops: soldQ2.length,
       pace: soldQ2.length / daysQ2,
-      revenue, profit,
-      avg_profit: soldQ2.length ? profit / soldQ2.length : 0,
+      revenue,                // precio + envío (bruto)
+      facturacion,            // ingreso neto Catawiki
+      beneficio_pre_irpf,     // base IRPF (como Excel madre)
+      beneficio_final,        // tras restar IRPF
+      irpf_estimado,
+      iva_a_pagar,
+      iva_repercutido_sum,
+      iva_soportado_total,
+      iva_soportado_op_sum,
+      gastos_iva_sum,
+      margen_bruto_sum,
+      iva_neto_op_sum,
+      beneficio_op_sum,
+      gastos_base_sum,
+      gastos_total_sum,
+      expensesQ2_count: expensesQ2.length,
+      comision_base_sum,
+      iva_comision_sum,
+      envio_venta_base_sum,
+      iva_envio_venta_sum,
+      cost_compra,
+      precio_plus_envio,
+      envios_pendientes,
+      // profit alias for legacy usage
+      profit: beneficio_pre_irpf,
+      avg_profit: soldQ2.length ? beneficio_pre_irpf / soldQ2.length : 0,
       avg_roi,
       stock_count: stock.length,
       stock_value,
@@ -761,7 +878,7 @@ const Dashboard = ({ state, setView, syncStatus }) => {
       returned_count: returnedAll.length,
       days_q2: daysQ2,
     };
-  }, [watches, settings, sold, stock, state.watches]);
+  }, [watches, settings, sold, stock, state.watches, state.expenses]);
 
   const dailySales = useMemo(() => {
     const by = {};
@@ -825,10 +942,119 @@ const Dashboard = ({ state, setView, syncStatus }) => {
       {/* Hero KPIs */}
       <div className="grid grid-cols-2 gap-3">
         <StatCard label="Ventas 2T" value={kpis.ops} sub={`${kpis.pace.toFixed(2)} ops/día`} trend="up" icon={ShoppingBag} accent={C.jade} />
-        <StatCard label="Beneficio" value={euro(kpis.profit)} sub={`${euro(kpis.avg_profit)}/op`} icon={TrendingUp} accent={C.gold} />
-        <StatCard label="Facturación" value={euro(kpis.revenue)} sub={`ROI medio ${pct(kpis.avg_roi)}`} icon={Euro} accent={C.cream} />
-        <StatCard label="Stock" value={kpis.stock_count} sub={euro(kpis.stock_value)} icon={Package} accent={C.copper} />
+        <StatCard label="Facturación neta" value={euro(kpis.facturacion)} sub="tras comisión Catawiki" icon={Euro} accent={C.cream} />
+        <StatCard label="Beneficio pre-IRPF" value={euro(kpis.beneficio_pre_irpf)} sub={`${euro(kpis.ops ? kpis.beneficio_pre_irpf / kpis.ops : 0)}/op`} icon={TrendingUp} accent={C.gold} />
+        <StatCard label="Beneficio final" value={euro(kpis.beneficio_final)} sub={`tras IRPF ${state.settings.irpf_rate}%`} icon={PiggyBank} accent={C.jade} />
       </div>
+
+      {/* Alert: envíos pendientes */}
+      {kpis.envios_pendientes > 0 && (
+        <Card className="p-3" style={{ background: `${C.amber}0f`, border: `1px solid ${C.amber}55` }}>
+          <div className="flex items-start gap-2">
+            <AlertTriangle size={14} style={{ color: C.amber, marginTop: 2 }} />
+            <div className="text-[11px]" style={{ color: C.cream }}>
+              <div className="font-semibold" style={{ color: C.amber }}>{kpis.envios_pendientes} ventas sin envío real imputado</div>
+              <div className="mt-0.5" style={{ color: C.dim }}>Cuando Correos te facture a fin de mes, añade los envíos al Excel madre. El beneficio puede estar sobrevalorado.</div>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {/* Profit breakdown — mirrors Excel madre RESUMEN_FISCAL */}
+      {kpis.ops > 0 && (
+        <Card className="p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <TrendingUp size={14} style={{ color: C.gold }} />
+            <span className="text-xs tracking-widest uppercase font-bold" style={{ color: C.mute }}>Cómo se calcula (2T 2026)</span>
+          </div>
+
+          {/* Camino 1: cash flow (facturación neta) */}
+          <div className="mb-4">
+            <div className="text-[10px] tracking-widest uppercase mb-2" style={{ color: C.mute }}>Cash flow — lo que te ingresa Catawiki</div>
+            <div className="space-y-1 text-xs">
+              <div className="flex justify-between">
+                <span style={{ color: C.dim }}>Precio venta + envío cobrado</span>
+                <span style={{ color: C.cream }}>{euro(kpis.precio_plus_envio)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span style={{ color: C.dim }}>− Comisión Catawiki con IVA</span>
+                <span style={{ color: C.ruby }}>−{euro(kpis.comision_base_sum + kpis.iva_comision_sum)}</span>
+              </div>
+              <div className="flex justify-between pt-1" style={{ borderTop: `1px solid ${C.line}` }}>
+                <span className="font-semibold" style={{ color: C.cream }}>Facturación neta</span>
+                <span className="font-semibold" style={{ color: C.cream }}>{euro(kpis.facturacion)}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Camino 2: fiscal */}
+          <div>
+            <div className="text-[10px] tracking-widest uppercase mb-2" style={{ color: C.mute }}>Camino fiscal — beneficio según Hacienda</div>
+            <div className="space-y-1 text-xs">
+              <div className="flex justify-between">
+                <span style={{ color: C.dim }}>Precio venta + envío cobrado</span>
+                <span style={{ color: C.cream }}>{euro(kpis.precio_plus_envio)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span style={{ color: C.dim }}>− Coste compra</span>
+                <span style={{ color: C.ruby }}>−{euro(kpis.cost_compra)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span style={{ color: C.dim }}>− Comisión base (sin IVA)</span>
+                <span style={{ color: C.ruby }}>−{euro(kpis.comision_base_sum)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span style={{ color: C.dim }}>− Envío venta base {kpis.envios_pendientes > 0 && <span style={{ color: C.amber }}>⚠</span>}</span>
+                <span style={{ color: C.ruby }}>−{euro(kpis.envio_venta_base_sum)}</span>
+              </div>
+              <div className="flex justify-between pt-1" style={{ borderTop: `1px solid ${C.line}` }}>
+                <span style={{ color: C.mute, fontWeight: 500 }}>Margen bruto</span>
+                <span style={{ color: C.cream, fontWeight: 500 }}>{euro(kpis.margen_bruto_sum)}</span>
+              </div>
+
+              <div className="h-2" />
+
+              <div className="flex justify-between">
+                <span style={{ color: C.dim }}>− IVA neto de ops (repercutido−soportado op)</span>
+                <span style={{ color: C.ruby }}>−{euro(kpis.iva_neto_op_sum)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span style={{ color: C.dim }}>− Gastos generales base ({kpis.expensesQ2_count} apuntes)</span>
+                <span style={{ color: C.ruby }}>−{euro(kpis.gastos_base_sum)}</span>
+              </div>
+              <div className="flex justify-between pt-1.5" style={{ borderTop: `1px solid ${C.gold}55` }}>
+                <span className="font-semibold" style={{ color: C.gold }}>Beneficio pre-IRPF</span>
+                <span className="font-semibold" style={{ color: C.gold }}>{euro(kpis.beneficio_pre_irpf)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span style={{ color: C.dim }}>− IRPF estimado ({state.settings.irpf_rate}%)</span>
+                <span style={{ color: C.ruby }}>−{euro(kpis.irpf_estimado)}</span>
+              </div>
+              <div className="flex justify-between pt-1.5" style={{ borderTop: `1px solid ${C.jade}55` }}>
+                <span className="font-semibold" style={{ color: C.jade }}>Beneficio final</span>
+                <span className="font-semibold" style={{ color: C.jade }}>{euro(kpis.beneficio_final)}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Aviso IVA a pagar */}
+          <div className="mt-3 p-2.5 rounded-lg text-[10px] leading-relaxed" style={{ background: `${C.gold}08`, border: `1px solid ${C.gold}22`, color: C.dim }}>
+            <div style={{ color: C.mute, fontWeight: 500 }}>Pendiente de pagar a Hacienda:</div>
+            <div className="flex justify-between mt-1">
+              <span>IVA trimestral (rep {euroExact(kpis.iva_repercutido_sum)} − sop {euroExact(kpis.iva_soportado_total)})</span>
+              <span style={{ color: kpis.iva_a_pagar > 0 ? C.ruby : C.jade }}>{euro(kpis.iva_a_pagar)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>IRPF anual (aprox)</span>
+              <span style={{ color: C.ruby }}>{euro(kpis.irpf_estimado)}</span>
+            </div>
+            <div className="mt-1.5" style={{ color: C.mute, fontSize: 9 }}>
+              El IVA soportado de comisiones, envíos y gastos deducibles se recupera vía menor IVA trimestral.
+              Por eso el "Beneficio final" ya tiene todo el impacto del IVA dentro.
+            </div>
+          </div>
+        </Card>
+      )}
 
       {/* Expenses quick access */}
       {(state.expenses || []).length > 0 && (
@@ -3439,6 +3665,9 @@ ${stock.sort((a,b) => daysBetween(b.purchase_date, today()) - daysBetween(a.purc
         <div className="grid grid-cols-2 gap-3">
           <Field label="IVA (%)" type="number" value={s.iva_rate} onChange={(v) => u("iva_rate", v)} />
           <Field label="IRPF (%)" type="number" value={s.irpf_rate} onChange={(v) => u("irpf_rate", v)} />
+        </div>
+        <div className="text-[10px]" style={{ color: C.mute }}>
+          Los gastos generales se leen directamente de la pestaña GASTOS_GENERALES del Excel madre.
         </div>
       </Card>
 
