@@ -3851,7 +3851,7 @@ const BottomNav = ({ view, setView }) => {
 // ═══════════════════════════════════════════════════════════
 // VIEW: TAX ANALYSIS — Autónomo REBU vs SL REBU
 // ═══════════════════════════════════════════════════════════
-const TaxAnalysisView = ({ state, setView }) => {
+const TaxAnalysisView = ({ state, setView, goBack }) => {
   // Build projection from actual Q1+Q2 data
   const sold = state.watches.filter(w => w.status === "sold");
   const actualRevenue = sold.reduce((s, w) => s + (w.sale_price || 0) + (w.sale_shipping || 0), 0);
@@ -4077,7 +4077,7 @@ const TaxAnalysisView = ({ state, setView }) => {
 // ═══════════════════════════════════════════════════════════
 // VIEW: PENDING INVOICES — Batch retroactivo
 // ═══════════════════════════════════════════════════════════
-const PendingInvoicesView = ({ state, setView }) => {
+const PendingInvoicesView = ({ state, setView, goBack }) => {
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState([]);
   const [error, setError] = useState("");
