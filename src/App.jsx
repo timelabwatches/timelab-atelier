@@ -811,17 +811,25 @@ const Dashboard = ({ state, setView, syncStatus }) => {
 
     // --- Métricas finales ---
 
-    // FACTURACIÓN (según definición de Joseba): lo que aterriza en cuenta
-    // = precio + envío − comisión con IVA
-    const facturacion = precio_plus_envio - comision_base_sum - iva_comision_sum;
+    // FACTURACIÓN BRUTA: precio + envío cobrado al cliente (lo que emites en facturas)
+    const facturacion = precio_plus_envio;
+
+    // INGRESO NETO (cash flow real tras comisión Catawiki): lo que aterriza en cuenta
+    const ingreso_neto_cash = precio_plus_envio - comision_base_sum - iva_comision_sum;
+
+    // INGRESO COMPUTABLE PARA IRPF: facturación - IVA repercutido
+    const ingreso_computable = precio_plus_envio - iva_repercutido_sum;
+
+    // GASTOS DEDUCIBLES TOTALES (todos en BASE sin IVA, fiscalmente correcto):
+    const gastos_deducibles = cost_compra + comision_base_sum + envio_venta_base_sum + gastos_base_sum;
 
     // IVA A PAGAR A HACIENDA (trimestral, global)
-    // = IVA repercutido − IVA soportado (op + gastos deducibles)
     const iva_soportado_total = iva_comision_sum + iva_envio_venta_sum + iva_soportado_op_sum + gastos_iva_sum;
     const iva_a_pagar = iva_repercutido_sum - iva_soportado_total;
 
-    // BENEFICIO PRE-IRPF (igual que Excel madre)
-    // = Σ(beneficio_neto_op) − Σ(gastos_base)
+    // BENEFICIO PRE-IRPF
+    // Método oficial del Excel madre: Σ(beneficio_neto_op) − Σ(gastos_base)
+    // Verificación: ingreso_computable − gastos_deducibles
     const beneficio_pre_irpf = beneficio_op_sum - gastos_base_sum;
 
     // IRPF estimado
@@ -843,7 +851,10 @@ const Dashboard = ({ state, setView, syncStatus }) => {
       ops: soldQ2.length,
       pace: soldQ2.length / daysQ2,
       revenue,                // precio + envío (bruto)
-      facturacion,            // ingreso neto Catawiki
+      facturacion,            // = precio + envío (igual que revenue)
+      ingreso_neto_cash,      // precio + envío − comisión con IVA (cash flow real)
+      ingreso_computable,     // precio + envío − IVA repercutido (para IRPF)
+      gastos_deducibles,      // total gastos deducibles
       beneficio_pre_irpf,     // base IRPF (como Excel madre)
       beneficio_final,        // tras restar IRPF
       irpf_estimado,
@@ -942,7 +953,7 @@ const Dashboard = ({ state, setView, syncStatus }) => {
       {/* Hero KPIs */}
       <div className="grid grid-cols-2 gap-3">
         <StatCard label="Ventas 2T" value={kpis.ops} sub={`${kpis.pace.toFixed(2)} ops/día`} trend="up" icon={ShoppingBag} accent={C.jade} />
-        <StatCard label="Facturación neta" value={euro(kpis.facturacion)} sub="tras comisión Catawiki" icon={Euro} accent={C.cream} />
+        <StatCard label="Facturación" value={euro(kpis.facturacion)} sub={`${euro(kpis.ingreso_neto_cash)} neto cuenta`} icon={Euro} accent={C.cream} />
         <StatCard label="Beneficio pre-IRPF" value={euro(kpis.beneficio_pre_irpf)} sub={`${euro(kpis.ops ? kpis.beneficio_pre_irpf / kpis.ops : 0)}/op`} icon={TrendingUp} accent={C.gold} />
         <StatCard label="Beneficio final" value={euro(kpis.beneficio_final)} sub={`tras IRPF ${state.settings.irpf_rate}%`} icon={PiggyBank} accent={C.jade} />
       </div>
@@ -960,69 +971,71 @@ const Dashboard = ({ state, setView, syncStatus }) => {
         </Card>
       )}
 
-      {/* Profit breakdown — mirrors Excel madre RESUMEN_FISCAL */}
+      {/* Desglose fiscal estilo CFO */}
       {kpis.ops > 0 && (
         <Card className="p-4">
           <div className="flex items-center gap-2 mb-3">
-            <TrendingUp size={14} style={{ color: C.gold }} />
-            <span className="text-xs tracking-widest uppercase font-bold" style={{ color: C.mute }}>Cómo se calcula (2T 2026)</span>
+            <FileText size={14} style={{ color: C.gold }} />
+            <span className="text-xs tracking-widest uppercase font-bold" style={{ color: C.mute }}>Auditoría fiscal (2T 2026)</span>
           </div>
 
-          {/* Camino 1: cash flow (facturación neta) */}
-          <div className="mb-4">
-            <div className="text-[10px] tracking-widest uppercase mb-2" style={{ color: C.mute }}>Cash flow — lo que te ingresa Catawiki</div>
+          {/* Sección 1: INGRESOS */}
+          <div className="mb-3">
+            <div className="text-[10px] tracking-widest uppercase mb-2" style={{ color: C.gold }}>1. Ingresos</div>
             <div className="space-y-1 text-xs">
               <div className="flex justify-between">
-                <span style={{ color: C.dim }}>Precio venta + envío cobrado</span>
-                <span style={{ color: C.cream }}>{euro(kpis.precio_plus_envio)}</span>
+                <span style={{ color: C.dim }}>Facturación bruta (precio + envío)</span>
+                <span style={{ color: C.cream }}>{euro(kpis.facturacion)}</span>
               </div>
               <div className="flex justify-between">
-                <span style={{ color: C.dim }}>− Comisión Catawiki con IVA</span>
-                <span style={{ color: C.ruby }}>−{euro(kpis.comision_base_sum + kpis.iva_comision_sum)}</span>
+                <span style={{ color: C.dim }}>− IVA repercutido</span>
+                <span style={{ color: C.ruby }}>−{euro(kpis.iva_repercutido_sum)}</span>
               </div>
               <div className="flex justify-between pt-1" style={{ borderTop: `1px solid ${C.line}` }}>
-                <span className="font-semibold" style={{ color: C.cream }}>Facturación neta</span>
-                <span className="font-semibold" style={{ color: C.cream }}>{euro(kpis.facturacion)}</span>
+                <span className="font-semibold" style={{ color: C.cream }}>Ingreso computable</span>
+                <span className="font-semibold" style={{ color: C.cream }}>{euro(kpis.ingreso_computable)}</span>
               </div>
             </div>
           </div>
 
-          {/* Camino 2: fiscal */}
-          <div>
-            <div className="text-[10px] tracking-widest uppercase mb-2" style={{ color: C.mute }}>Camino fiscal — beneficio según Hacienda</div>
+          {/* Sección 2: GASTOS DEDUCIBLES */}
+          <div className="mb-3">
+            <div className="text-[10px] tracking-widest uppercase mb-2" style={{ color: C.gold }}>2. Gastos deducibles (base sin IVA)</div>
             <div className="space-y-1 text-xs">
               <div className="flex justify-between">
-                <span style={{ color: C.dim }}>Precio venta + envío cobrado</span>
-                <span style={{ color: C.cream }}>{euro(kpis.precio_plus_envio)}</span>
+                <span style={{ color: C.dim }}>Coste compra</span>
+                <span style={{ color: C.cream }}>{euro(kpis.cost_compra)}</span>
               </div>
               <div className="flex justify-between">
-                <span style={{ color: C.dim }}>− Coste compra</span>
-                <span style={{ color: C.ruby }}>−{euro(kpis.cost_compra)}</span>
+                <span style={{ color: C.dim }}>Comisión canal</span>
+                <span style={{ color: C.cream }}>{euro(kpis.comision_base_sum)}</span>
               </div>
               <div className="flex justify-between">
-                <span style={{ color: C.dim }}>− Comisión base (sin IVA)</span>
-                <span style={{ color: C.ruby }}>−{euro(kpis.comision_base_sum)}</span>
+                <span style={{ color: C.dim }}>
+                  Envío venta {kpis.envios_pendientes > 0 && <span style={{ color: C.amber }}>⚠ {kpis.envios_pendientes} pdtes</span>}
+                </span>
+                <span style={{ color: C.cream }}>{euro(kpis.envio_venta_base_sum)}</span>
               </div>
               <div className="flex justify-between">
-                <span style={{ color: C.dim }}>− Envío venta base {kpis.envios_pendientes > 0 && <span style={{ color: C.amber }}>⚠</span>}</span>
-                <span style={{ color: C.ruby }}>−{euro(kpis.envio_venta_base_sum)}</span>
+                <span style={{ color: C.dim }}>Gastos generales ({kpis.expensesQ2_count} apuntes)</span>
+                <span style={{ color: C.cream }}>{euro(kpis.gastos_base_sum)}</span>
               </div>
               <div className="flex justify-between pt-1" style={{ borderTop: `1px solid ${C.line}` }}>
-                <span style={{ color: C.mute, fontWeight: 500 }}>Margen bruto</span>
-                <span style={{ color: C.cream, fontWeight: 500 }}>{euro(kpis.margen_bruto_sum)}</span>
+                <span className="font-semibold" style={{ color: C.cream }}>Total gastos deducibles</span>
+                <span className="font-semibold" style={{ color: C.ruby }}>−{euro(kpis.gastos_deducibles)}</span>
               </div>
+            </div>
+          </div>
 
-              <div className="h-2" />
-
+          {/* Sección 3: RESULTADO FISCAL */}
+          <div className="mb-3 p-2.5 rounded-lg" style={{ background: `${C.gold}08`, border: `1px solid ${C.gold}33` }}>
+            <div className="text-[10px] tracking-widest uppercase mb-2" style={{ color: C.gold }}>3. Resultado fiscal</div>
+            <div className="space-y-1 text-xs">
               <div className="flex justify-between">
-                <span style={{ color: C.dim }}>− IVA neto de ops (repercutido−soportado op)</span>
-                <span style={{ color: C.ruby }}>−{euro(kpis.iva_neto_op_sum)}</span>
+                <span style={{ color: C.dim }}>Ingreso computable − Gastos deducibles</span>
+                <span style={{ color: C.cream }}></span>
               </div>
               <div className="flex justify-between">
-                <span style={{ color: C.dim }}>− Gastos generales base ({kpis.expensesQ2_count} apuntes)</span>
-                <span style={{ color: C.ruby }}>−{euro(kpis.gastos_base_sum)}</span>
-              </div>
-              <div className="flex justify-between pt-1.5" style={{ borderTop: `1px solid ${C.gold}55` }}>
                 <span className="font-semibold" style={{ color: C.gold }}>Beneficio pre-IRPF</span>
                 <span className="font-semibold" style={{ color: C.gold }}>{euro(kpis.beneficio_pre_irpf)}</span>
               </div>
@@ -1030,28 +1043,44 @@ const Dashboard = ({ state, setView, syncStatus }) => {
                 <span style={{ color: C.dim }}>− IRPF estimado ({state.settings.irpf_rate}%)</span>
                 <span style={{ color: C.ruby }}>−{euro(kpis.irpf_estimado)}</span>
               </div>
-              <div className="flex justify-between pt-1.5" style={{ borderTop: `1px solid ${C.jade}55` }}>
+              <div className="flex justify-between pt-1" style={{ borderTop: `1px solid ${C.jade}55` }}>
                 <span className="font-semibold" style={{ color: C.jade }}>Beneficio final</span>
                 <span className="font-semibold" style={{ color: C.jade }}>{euro(kpis.beneficio_final)}</span>
               </div>
             </div>
           </div>
 
-          {/* Aviso IVA a pagar */}
-          <div className="mt-3 p-2.5 rounded-lg text-[10px] leading-relaxed" style={{ background: `${C.gold}08`, border: `1px solid ${C.gold}22`, color: C.dim }}>
-            <div style={{ color: C.mute, fontWeight: 500 }}>Pendiente de pagar a Hacienda:</div>
-            <div className="flex justify-between mt-1">
-              <span>IVA trimestral (rep {euroExact(kpis.iva_repercutido_sum)} − sop {euroExact(kpis.iva_soportado_total)})</span>
-              <span style={{ color: kpis.iva_a_pagar > 0 ? C.ruby : C.jade }}>{euro(kpis.iva_a_pagar)}</span>
+          {/* Sección 4: IVA TRIMESTRAL */}
+          <div className="mb-3">
+            <div className="text-[10px] tracking-widest uppercase mb-2" style={{ color: C.gold }}>4. IVA trimestral (Modelo 303)</div>
+            <div className="space-y-1 text-xs">
+              <div className="flex justify-between">
+                <span style={{ color: C.dim }}>IVA repercutido</span>
+                <span style={{ color: C.cream }}>{euro(kpis.iva_repercutido_sum)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span style={{ color: C.dim }}>− IVA soportado deducible</span>
+                <span style={{ color: C.ruby }}>−{euro(kpis.iva_soportado_total)}</span>
+              </div>
+              <div className="text-[10px] pl-3" style={{ color: C.mute }}>
+                · Comisiones: {euroExact(kpis.iva_comision_sum)} · Envíos: {euroExact(kpis.iva_envio_venta_sum)}
+                {kpis.iva_soportado_op_sum > 0 && <> · Ops GENERAL: {euroExact(kpis.iva_soportado_op_sum)}</>}
+                {" "}· Gastos: {euroExact(kpis.gastos_iva_sum)}
+              </div>
+              <div className="flex justify-between pt-1" style={{ borderTop: `1px solid ${C.line}` }}>
+                <span className="font-semibold" style={{ color: kpis.iva_a_pagar >= 0 ? C.ruby : C.jade }}>
+                  IVA a {kpis.iva_a_pagar >= 0 ? "pagar" : "devolver"}
+                </span>
+                <span className="font-semibold" style={{ color: kpis.iva_a_pagar >= 0 ? C.ruby : C.jade }}>{euro(Math.abs(kpis.iva_a_pagar))}</span>
+              </div>
             </div>
-            <div className="flex justify-between">
-              <span>IRPF anual (aprox)</span>
-              <span style={{ color: C.ruby }}>{euro(kpis.irpf_estimado)}</span>
-            </div>
-            <div className="mt-1.5" style={{ color: C.mute, fontSize: 9 }}>
-              El IVA soportado de comisiones, envíos y gastos deducibles se recupera vía menor IVA trimestral.
-              Por eso el "Beneficio final" ya tiene todo el impacto del IVA dentro.
-            </div>
+          </div>
+
+          {/* Nota CFO */}
+          <div className="p-2.5 rounded-lg text-[10px] leading-relaxed" style={{ background: `${C.line}44`, color: C.dim }}>
+            <div style={{ color: C.mute, fontWeight: 500, marginBottom: 4 }}>Nota fiscal:</div>
+            El IVA se gestiona aparte del beneficio. Pagas trimestralmente {euroExact(kpis.iva_a_pagar)} de IVA y anualmente {euroExact(kpis.irpf_estimado)} de IRPF.
+            Cash flow real en cuenta (tras comisión Catawiki): {euroExact(kpis.ingreso_neto_cash)}.
           </div>
         </Card>
       )}
