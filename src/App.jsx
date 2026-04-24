@@ -1438,7 +1438,7 @@ const StockView = ({ state, setView, filter }) => {
 // ═══════════════════════════════════════════════════════════
 // VIEW: WATCH DETAIL
 // ═══════════════════════════════════════════════════════════
-const WatchDetail = ({ state, dispatch, id, setView }) => {
+const WatchDetail = ({ state, dispatch, id, setView, goBack }) => {
   const watch = state.watches.find(w => w.id === id);
   const [noteModal, setNoteModal] = useState(false);
   const [noteText, setNoteText] = useState("");
@@ -1493,8 +1493,8 @@ const WatchDetail = ({ state, dispatch, id, setView }) => {
 
   return (
     <div className="px-4 pb-24 pt-4 space-y-3">
-      <button onClick={() => setView({ name: "stock" })} className="flex items-center gap-1 text-xs" style={{ color: C.mute }}>
-        <ChevronLeft size={14} /> Volver al stock
+      <button onClick={goBack} className="flex items-center gap-1 text-xs" style={{ color: C.mute }}>
+        <ChevronLeft size={14} /> Volver
       </button>
 
       <Card className="p-5" style={{ background: `linear-gradient(135deg, ${C.surface} 0%, ${C.coal} 100%)` }}>
@@ -1841,7 +1841,7 @@ const WatchDetail = ({ state, dispatch, id, setView }) => {
                 <iframe
                   srcDoc={invoicePreviewHtml}
                   title="Preview factura"
-                  style={{ width: "100%", height: "420px", border: "none" }}
+                  style={{ width: "100%", height: "300px", border: "none", background: "#fff" }}
                 />
               </div>
 
@@ -2182,13 +2182,39 @@ const Timeline = ({ events, onAddNote }) => {
 // MODAL (reusable)
 // ═══════════════════════════════════════════════════════════
 const Modal = ({ title, onClose, children }) => (
-  <div onClick={onClose} className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.75)" }}>
-    <div onClick={(e) => e.stopPropagation()} className="w-full max-w-md rounded-2xl p-5" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
-      <div className="flex items-center justify-between mb-4">
+  <div
+    onClick={onClose}
+    className="fixed inset-0 z-50 flex items-center justify-center"
+    style={{
+      background: "rgba(0,0,0,0.75)",
+      padding: "1rem",
+      // En móvil, reservamos espacio abajo para la bottom nav (+ home indicator)
+      paddingBottom: "calc(6rem + env(safe-area-inset-bottom, 0px))",
+      paddingTop: "calc(1rem + env(safe-area-inset-top, 0px))",
+    }}
+  >
+    <div
+      onClick={(e) => e.stopPropagation()}
+      className="w-full max-w-md rounded-2xl flex flex-col"
+      style={{
+        background: C.surface,
+        border: `1px solid ${C.line}`,
+        // Modal jamás más alto que lo que permite la pantalla menos la bottom nav
+        maxHeight: "calc(100vh - 7rem - env(safe-area-inset-bottom, 0px) - env(safe-area-inset-top, 0px))",
+      }}
+    >
+      {/* Header fijo */}
+      <div
+        className="flex items-center justify-between p-5 pb-3 flex-shrink-0"
+        style={{ borderBottom: `1px solid ${C.line}` }}
+      >
         <span className="font-serif text-lg" style={{ color: C.cream, fontFamily: "'Fraunces', serif", fontWeight: 300 }}>{title}</span>
-        <button onClick={onClose}><X size={18} style={{ color: C.mute }} /></button>
+        <button onClick={onClose} className="p-1 -m-1"><X size={18} style={{ color: C.mute }} /></button>
       </div>
-      {children}
+      {/* Contenido con scroll interno */}
+      <div className="flex-1 overflow-y-auto p-5" style={{ WebkitOverflowScrolling: "touch" }}>
+        {children}
+      </div>
     </div>
   </div>
 );
@@ -2219,7 +2245,7 @@ const SuggestionsPanel = ({ suggestions, onAction }) => {
 // ═══════════════════════════════════════════════════════════
 // VIEW: ADD/EDIT WATCH
 // ═══════════════════════════════════════════════════════════
-const WatchForm = ({ state, dispatch, editId, setView }) => {
+const WatchForm = ({ state, dispatch, editId, setView, goBack }) => {
   const editing = editId ? state.watches.find(w => w.id === editId) : null;
   const [w, setW] = useState(editing || {
     brand: "", model: "", mechanism: "Automático", year: "", size: "",
@@ -2241,7 +2267,7 @@ const WatchForm = ({ state, dispatch, editId, setView }) => {
 
   return (
     <div className="px-4 pb-24 pt-4 space-y-3">
-      <button onClick={() => setView(editing ? { name: "watch-detail", id: editing.id } : { name: "stock" })} className="flex items-center gap-1 text-xs" style={{ color: C.mute }}>
+      <button onClick={goBack} className="flex items-center gap-1 text-xs" style={{ color: C.mute }}>
         <ChevronLeft size={14} /> Volver
       </button>
       <h1 className="font-serif text-3xl" style={{ color: C.cream, fontFamily: "'Fraunces', serif", fontWeight: 300 }}>{editing ? "Editar reloj" : "Nuevo reloj"}</h1>
@@ -2280,7 +2306,7 @@ const WatchForm = ({ state, dispatch, editId, setView }) => {
 // ═══════════════════════════════════════════════════════════
 // VIEW: SELL WATCH
 // ═══════════════════════════════════════════════════════════
-const SellView = ({ state, dispatch, id, setView }) => {
+const SellView = ({ state, dispatch, id, setView, goBack }) => {
   const watch = state.watches.find(w => w.id === id);
   const [sale, setSale] = useState({
     sale_channel: watch?.target_channel || watch?.listing_channel || "Catawiki",
@@ -2318,7 +2344,7 @@ const SellView = ({ state, dispatch, id, setView }) => {
 
   return (
     <div className="px-4 pb-24 pt-4 space-y-3">
-      <button onClick={() => setView({ name: "watch-detail", id: watch.id })} className="flex items-center gap-1 text-xs" style={{ color: C.mute }}>
+      <button onClick={goBack} className="flex items-center gap-1 text-xs" style={{ color: C.mute }}>
         <ChevronLeft size={14} /> Volver
       </button>
       <h1 className="font-serif text-3xl" style={{ color: C.cream, fontFamily: "'Fraunces', serif", fontWeight: 300 }}>Registrar venta</h1>
@@ -2936,7 +2962,7 @@ const CustomersView = ({ state, setView }) => {
 // ═══════════════════════════════════════════════════════════
 // VIEW: CUSTOMER DETAIL (contact log)
 // ═══════════════════════════════════════════════════════════
-const CustomerDetailView = ({ state, dispatch, customerName, setView }) => {
+const CustomerDetailView = ({ state, dispatch, customerName, setView, goBack }) => {
   const [showNoteModal, setShowNoteModal] = useState(false);
   const [note, setNote] = useState({ type: "nota", note: "" });
 
@@ -2953,7 +2979,7 @@ const CustomerDetailView = ({ state, dispatch, customerName, setView }) => {
   if (purchases.length === 0) {
     return (
       <div className="p-4">
-        <button onClick={() => setView({ name: "customers" })} className="flex items-center gap-1 text-xs" style={{ color: C.mute }}>
+        <button onClick={goBack} className="flex items-center gap-1 text-xs" style={{ color: C.mute }}>
           <ChevronLeft size={14} /> Volver
         </button>
         <div className="mt-4" style={{ color: C.dim }}>Cliente no encontrado</div>
@@ -2968,7 +2994,7 @@ const CustomerDetailView = ({ state, dispatch, customerName, setView }) => {
 
   return (
     <div className="px-4 pb-24 pt-4 space-y-3">
-      <button onClick={() => setView({ name: "customers" })} className="flex items-center gap-1 text-xs" style={{ color: C.mute }}>
+      <button onClick={goBack} className="flex items-center gap-1 text-xs" style={{ color: C.mute }}>
         <ChevronLeft size={14} /> Volver
       </button>
 
@@ -3064,7 +3090,7 @@ const CustomerDetailView = ({ state, dispatch, customerName, setView }) => {
 // ═══════════════════════════════════════════════════════════
 // VIEW: LISTING GENERATOR
 // ═══════════════════════════════════════════════════════════
-const ListingView = ({ state, id, setView }) => {
+const ListingView = ({ state, id, setView, goBack }) => {
   const watch = state.watches.find(w => w.id === id);
   const [channel, setChannel] = useState(watch?.target_channel || "Catawiki");
   const [copied, setCopied] = useState(null);
@@ -3079,7 +3105,7 @@ const ListingView = ({ state, id, setView }) => {
 
   return (
     <div className="px-4 pb-24 pt-4 space-y-3">
-      <button onClick={() => setView({ name: "watch-detail", id: watch.id })} className="flex items-center gap-1 text-xs" style={{ color: C.mute }}>
+      <button onClick={goBack} className="flex items-center gap-1 text-xs" style={{ color: C.mute }}>
         <ChevronLeft size={14} /> Volver
       </button>
       <h1 className="font-serif text-3xl" style={{ color: C.cream, fontFamily: "'Fraunces', serif", fontWeight: 300 }}>Listing</h1>
@@ -3148,7 +3174,7 @@ const PricePill = ({ label, value, color }) => (
 // ═══════════════════════════════════════════════════════════
 // VIEW: PRICE COMPS
 // ═══════════════════════════════════════════════════════════
-const CompsView = ({ state, dispatch, setView }) => {
+const CompsView = ({ state, dispatch, setView, goBack }) => {
   const [showNew, setShowNew] = useState(false);
   const [comp, setComp] = useState({ brand: "", model: "", price: 0, channel: "Catawiki", date: today(), source: "hammer" });
   const [q, setQ] = useState("");
@@ -3236,7 +3262,7 @@ const CompsView = ({ state, dispatch, setView }) => {
 // ═══════════════════════════════════════════════════════════
 // VIEW: EXPENSES
 // ═══════════════════════════════════════════════════════════
-const ExpensesView = ({ state, dispatch, setView }) => {
+const ExpensesView = ({ state, dispatch, setView, goBack }) => {
   const [showNew, setShowNew] = useState(false);
   const [exp, setExp] = useState({
     date: today(), concept: "", provider: "", base: 0, iva: 0, total: 0, deducible: true
@@ -3269,7 +3295,7 @@ const ExpensesView = ({ state, dispatch, setView }) => {
 
   return (
     <div className="px-4 pb-24 pt-4 space-y-3">
-      <button onClick={() => setView({ name: "dashboard" })} className="flex items-center gap-1 text-xs" style={{ color: C.mute }}>
+      <button onClick={goBack} className="flex items-center gap-1 text-xs" style={{ color: C.mute }}>
         <ChevronLeft size={14} /> Volver
       </button>
 
@@ -3953,8 +3979,8 @@ const TaxAnalysisView = ({ state, setView }) => {
   return (
     <div className="px-4 pb-24 pt-4 space-y-3">
       <div className="pt-2">
-        <button onClick={() => setView({ name: "settings" })} className="flex items-center gap-1 text-xs mb-2" style={{ color: C.mute }}>
-          <ChevronRight size={12} style={{ transform: "rotate(180deg)" }} /> Ajustes
+        <button onClick={goBack} className="flex items-center gap-1 text-xs mb-2" style={{ color: C.mute }}>
+          <ChevronRight size={12} style={{ transform: "rotate(180deg)" }} /> Volver
         </button>
         <h1 className="font-serif text-3xl" style={{ color: C.cream, fontFamily: "'Fraunces', serif", fontWeight: 300 }}>Autónomo vs SL</h1>
         <div className="text-xs mt-1" style={{ color: C.dim }}>Análisis con datos reales Q1+Q2 · proyección anual</div>
@@ -4086,8 +4112,8 @@ const PendingInvoicesView = ({ state, setView }) => {
   return (
     <div className="px-4 pb-24 pt-4 space-y-3">
       <div className="pt-2">
-        <button onClick={() => setView({ name: "settings" })} className="flex items-center gap-1 text-xs mb-2" style={{ color: C.mute }}>
-          <ChevronRight size={12} style={{ transform: "rotate(180deg)" }} /> Ajustes
+        <button onClick={goBack} className="flex items-center gap-1 text-xs mb-2" style={{ color: C.mute }}>
+          <ChevronRight size={12} style={{ transform: "rotate(180deg)" }} /> Volver
         </button>
         <h1 className="font-serif text-3xl" style={{ color: C.cream, fontFamily: "'Fraunces', serif", fontWeight: 300 }}>Facturas pendientes</h1>
         <div className="text-xs mt-1" style={{ color: C.dim }}>
@@ -4176,7 +4202,44 @@ const PendingInvoicesView = ({ state, setView }) => {
 // ═══════════════════════════════════════════════════════════
 export default function App() {
   const [state, dispatch] = useReducer(reducer, initialState);
-  const [view, setView] = useState({ name: "dashboard" });
+  // Navigation stack: last item is current view
+  const [navStack, setNavStack] = useState([{ name: "dashboard" }]);
+  const view = navStack[navStack.length - 1];
+
+  // Tabs that reset the navigation (act like the 5 roots)
+  const ROOT_VIEWS = new Set(["dashboard", "stock", "sales", "customers", "opportunities", "settings"]);
+
+  const setView = (newView) => {
+    setNavStack(prev => {
+      // If user taps a root tab (from BottomNav), reset history to just that tab
+      if (newView && ROOT_VIEWS.has(newView.name)) {
+        return [newView];
+      }
+      // Otherwise, push onto stack
+      const current = prev[prev.length - 1];
+      // Don't push duplicates (same name + same params)
+      if (current && current.name === newView.name && JSON.stringify(current) === JSON.stringify(newView)) {
+        return prev;
+      }
+      return [...prev, newView];
+    });
+  };
+
+  const goBack = () => {
+    setNavStack(prev => {
+      if (prev.length <= 1) return prev; // nowhere to go back
+      return prev.slice(0, -1);
+    });
+  };
+
+  // Replace current view in stack without adding history (for form flows)
+  const replaceView = (newView) => {
+    setNavStack(prev => {
+      if (prev.length === 0) return [newView];
+      return [...prev.slice(0, -1), newView];
+    });
+  };
+
   const [syncStatus, setSyncStatus] = useState({ status: "idle", error: null, lastSync: getLastSync() });
   const [loadingPhase, setLoadingPhase] = useState(0);
 
@@ -4331,20 +4394,20 @@ export default function App() {
     switch (view.name) {
       case "dashboard": return <Dashboard state={state} setView={setView} syncStatus={syncStatus} />;
       case "stock": return <StockView state={state} setView={setView} filter={view.filter} />;
-      case "watch-detail": return <WatchDetail state={state} dispatch={dispatch} id={view.id} setView={setView} />;
-      case "add-watch": return <WatchForm state={state} dispatch={dispatch} setView={setView} />;
-      case "edit-watch": return <WatchForm state={state} dispatch={dispatch} editId={view.id} setView={setView} />;
-      case "sell-watch": return <SellView state={state} dispatch={dispatch} id={view.id} setView={setView} />;
-      case "listing": return <ListingView state={state} id={view.id} setView={setView} />;
+      case "watch-detail": return <WatchDetail state={state} dispatch={dispatch} id={view.id} setView={setView} goBack={goBack} />;
+      case "add-watch": return <WatchForm state={state} dispatch={dispatch} setView={setView} goBack={goBack} />;
+      case "edit-watch": return <WatchForm state={state} dispatch={dispatch} editId={view.id} setView={setView} goBack={goBack} />;
+      case "sell-watch": return <SellView state={state} dispatch={dispatch} id={view.id} setView={setView} goBack={goBack} />;
+      case "listing": return <ListingView state={state} id={view.id} setView={setView} goBack={goBack} />;
       case "opportunities": return <OpportunitiesView state={state} dispatch={dispatch} setView={setView} />;
       case "customers": return <CustomersView state={state} setView={setView} />;
       case "sales": return <SalesView state={state} setView={setView} />;
-      case "customer-detail": return <CustomerDetailView state={state} dispatch={dispatch} customerName={view.customer} setView={setView} />;
-      case "comps": return <CompsView state={state} dispatch={dispatch} setView={setView} />;
-      case "expenses": return <ExpensesView state={state} dispatch={dispatch} setView={setView} />;
+      case "customer-detail": return <CustomerDetailView state={state} dispatch={dispatch} customerName={view.customer} setView={setView} goBack={goBack} />;
+      case "comps": return <CompsView state={state} dispatch={dispatch} setView={setView} goBack={goBack} />;
+      case "expenses": return <ExpensesView state={state} dispatch={dispatch} setView={setView} goBack={goBack} />;
       case "settings": return <SettingsView state={state} dispatch={dispatch} syncStatus={syncStatus} syncPush={syncPush} syncPull={syncPull} setView={setView} />;
-      case "tax-analysis": return <TaxAnalysisView state={state} setView={setView} />;
-      case "pending-invoices": return <PendingInvoicesView state={state} setView={setView} />;
+      case "tax-analysis": return <TaxAnalysisView state={state} setView={setView} goBack={goBack} />;
+      case "pending-invoices": return <PendingInvoicesView state={state} setView={setView} goBack={goBack} />;
       default: return <Dashboard state={state} setView={setView} />;
     }
   };
