@@ -1455,6 +1455,8 @@ const WatchDetail = ({ state, dispatch, id, setView, goBack }) => {
   const [invoiceFechaFactura, setInvoiceFechaFactura] = useState(today());
   const [invoiceIor, setInvoiceIor] = useState("");
   const [invoiceNeedsIor, setInvoiceNeedsIor] = useState(false);
+  const [invoiceIsThirdCountry, setInvoiceIsThirdCountry] = useState(false);
+  const [invoiceCountry, setInvoiceCountry] = useState("");
   const [invoicePreviewNum, setInvoicePreviewNum] = useState("");
   const [invoiceLoading, setInvoiceLoading] = useState(false);
   const [invoiceError, setInvoiceError] = useState("");
@@ -1602,6 +1604,8 @@ const WatchDetail = ({ state, dispatch, id, setView, goBack }) => {
                 setInvoicePreviewHtml("");
                 setInvoicePreviewNum("");
                 setInvoiceNeedsIor(false);
+                setInvoiceIsThirdCountry(false);
+                setInvoiceCountry("");
                 setInvoiceModal(true);
               }} icon={FileText} variant="primary" full>Generar factura</Btn>
             )}
@@ -1804,6 +1808,8 @@ const WatchDetail = ({ state, dispatch, id, setView, goBack }) => {
                       setInvoicePreviewHtml(res.html);
                       setInvoicePreviewNum(res.preview_number);
                       setInvoiceNeedsIor(Boolean(res.needs_ior));
+                      setInvoiceIsThirdCountry(Boolean(res.is_third_country_export));
+                      setInvoiceCountry(res.country || "");
                       setInvoiceStage("preview");
                     }
                   } catch (e) {
@@ -1827,12 +1833,24 @@ const WatchDetail = ({ state, dispatch, id, setView, goBack }) => {
               {invoiceNeedsIor && (
                 <div className="p-3 rounded-xl" style={{ background: `${C.amber}11`, border: `1px solid ${C.amber}44` }}>
                   <div className="text-xs font-semibold mb-2" style={{ color: C.amber }}>
-                    ⚠ Venta fuera UE por Catawiki
+                    ⚠ Venta fuera UE por Catawiki ({invoiceCountry})
                   </div>
                   <div className="text-[10px] mb-2" style={{ color: C.dim }}>
-                    Introduce el Authorization number que te dio Catawiki para esta venta.
+                    Catawiki actúa como Importer of Record. Introduce el Authorization number que te facilitó Catawiki para esta venta.
                   </div>
                   <Field label="Authorization number" value={invoiceIor} onChange={setInvoiceIor} placeholder="ej. 1385" />
+                </div>
+              )}
+
+              {invoiceIsThirdCountry && (
+                <div className="p-3 rounded-xl" style={{ background: `${C.copper}11`, border: `1px solid ${C.copper}44` }}>
+                  <div className="text-xs font-semibold mb-2" style={{ color: C.copper }}>
+                    🌍 Exportación a país tercero ({invoiceCountry})
+                  </div>
+                  <div className="text-[10px]" style={{ color: C.dim }}>
+                    Venta fuera UE sin IoR de Catawiki. La factura incluirá el bloque "EXPORT TO THIRD COUNTRY" en inglés.
+                    No se requiere Authorization number. La documentación aduanera la genera el operador de transporte (UPS, etc.) por separado.
+                  </div>
                 </div>
               )}
 
