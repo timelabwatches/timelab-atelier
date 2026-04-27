@@ -1849,7 +1849,7 @@ const WatchDetail = ({ state, dispatch, id, setView, goBack }) => {
                   </div>
                   <div className="text-[10px]" style={{ color: C.dim }}>
                     Venta fuera UE sin IoR de Catawiki. La factura incluirá el bloque "EXPORT TO THIRD COUNTRY" en inglés.
-                    No se requiere Authorization number. La documentación aduanera la genera el operador de transporte (UPS, etc.) por separado.
+                    Recuerda imprimir 3 copias para meterlas en un sobre exterior del paquete y 1 dentro para el cliente.
                   </div>
                 </div>
               )}
