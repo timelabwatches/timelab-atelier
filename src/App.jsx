@@ -15,7 +15,7 @@ import {
   Camera, Image as ImageIcon, TrendingDown, Bell, FileDown,
   MessageSquare, RotateCcw, Eye, Zap, PiggyBank, History, Link2,
   Activity, CircleDot, ExternalLink, Wand2, Phone, Building2,
-  Cloud, CloudOff, RefreshCw, Link, Loader2, Calculator
+  Cloud, CloudOff, RefreshCw, Link, Loader2, Calculator, Info
 } from "lucide-react";
 import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
@@ -2548,9 +2548,47 @@ const RedFlagsEditor = ({ flags, onChange }) => {
 // ═══════════════════════════════════════════════════════════
 // VIEW: SALES — historial de ventas ordenado por fecha
 // ═══════════════════════════════════════════════════════════
+// ─── KPI Card with info button (used in SalesView) ────────────────────────
+const KpiCardInfo = ({ label, value, sub, accent, info, full }) => (
+  <Card className={`p-3.5 ${full ? "" : ""}`}>
+    <div className="flex items-start justify-between mb-1">
+      <div className="text-[10px] tracking-widest uppercase font-bold" style={{ color: C.mute }}>{label}</div>
+      <button onClick={info} className="p-0.5 -m-0.5" aria-label="Info">
+        <Info size={11} style={{ color: C.mute }} />
+      </button>
+    </div>
+    <div className="font-serif leading-tight" style={{ color: accent || C.cream, fontFamily: "'Fraunces', serif", fontSize: full ? 26 : 22, fontWeight: 300 }}>
+      {value}
+    </div>
+    {sub && <div className="text-[10px] mt-1" style={{ color: C.dim }}>{sub}</div>}
+  </Card>
+);
+
+// ─── Comparativa row (used in SalesView) ───────────────────────────────────
+const ComparativaRow = ({ label, cur, prev, pct, format }) => {
+  const isPositive = pct >= 0;
+  const color = pct === 0 ? C.mute : isPositive ? C.jade : C.ruby;
+  return (
+    <div className="flex items-center justify-between">
+      <span style={{ color: C.dim }}>{label}</span>
+      <div className="flex items-center gap-2">
+        <span className="text-[10px]" style={{ color: C.mute }}>
+          {format(cur)} vs {format(prev)}
+        </span>
+        <span className="font-semibold tabular-nums" style={{ color, minWidth: 50, textAlign: "right" }}>
+          {isPositive ? "+" : ""}{pct}%
+        </span>
+      </div>
+    </div>
+  );
+};
+
 const SalesView = ({ state, setView }) => {
   const [q, setQ] = useState("");
   const [tab, setTab] = useState("sold"); // sold | returned | lost | all
+  const [period, setPeriod] = useState("month"); // today | month | quarter | year | last30
+  const [monthOffset, setMonthOffset] = useState(0); // 0 = mes actual, -1 = mes anterior, etc.
+  const [activeTooltip, setActiveTooltip] = useState(null); // null | "facturacion" | "ingreso_neto" | "beneficio_bruto" | "beneficio_pre_irpf" | "beneficio_final"
 
   const allSales = useMemo(() => {
     return state.watches
@@ -2562,6 +2600,192 @@ const SalesView = ({ state, setView }) => {
       });
   }, [state.watches]);
 
+  // ─── Periodo activo: rango de fechas según selector ───────────────────────
+  const periodInfo = useMemo(() => {
+    const todayStr = today();
+    const t = new Date(todayStr + "T00:00:00");
+    const y = t.getFullYear();
+    const m = t.getMonth(); // 0..11
+
+    let start, end, label, prevStart, prevEnd, prevLabel, daysElapsed;
+
+    if (period === "today") {
+      start = todayStr;
+      end = todayStr;
+      label = "Hoy";
+      // Comparativa: ayer
+      const yest = new Date(t); yest.setDate(yest.getDate() - 1);
+      prevStart = yest.toISOString().slice(0, 10);
+      prevEnd = prevStart;
+      prevLabel = "ayer";
+      daysElapsed = 1;
+    } else if (period === "month") {
+      // monthOffset=0 mes actual, -1 mes anterior, etc.
+      const firstOfThisMonth = new Date(y, m + monthOffset, 1);
+      const firstOfNextMonth = new Date(y, m + monthOffset + 1, 1);
+      const lastOfThisMonth = new Date(firstOfNextMonth - 1);
+      start = firstOfThisMonth.toISOString().slice(0, 10);
+      // Si es mes actual, end = hoy. Si es mes pasado, end = último día del mes
+      end = (monthOffset === 0)
+        ? todayStr
+        : lastOfThisMonth.toISOString().slice(0, 10);
+      const months = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+      label = `${months[firstOfThisMonth.getMonth()]} ${firstOfThisMonth.getFullYear()}`;
+      // Comparativa: mismo número de días del mes anterior al seleccionado
+      const dayCutoff = (monthOffset === 0)
+        ? t.getDate()
+        : lastOfThisMonth.getDate();
+      const firstOfPrevMonth = new Date(firstOfThisMonth.getFullYear(), firstOfThisMonth.getMonth() - 1, 1);
+      const cutoffPrev = new Date(firstOfThisMonth.getFullYear(), firstOfThisMonth.getMonth() - 1, dayCutoff);
+      prevStart = firstOfPrevMonth.toISOString().slice(0, 10);
+      prevEnd = cutoffPrev.toISOString().slice(0, 10);
+      const monthsShort = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+      prevLabel = monthsShort[firstOfPrevMonth.getMonth()];
+      daysElapsed = dayCutoff;
+    } else if (period === "quarter") {
+      const currentQuarter = Math.floor(m / 3);
+      const firstOfQuarter = new Date(y, currentQuarter * 3, 1);
+      start = firstOfQuarter.toISOString().slice(0, 10);
+      end = todayStr;
+      label = `${currentQuarter + 1}T ${y}`;
+      // Comparativa: mismo número de días del trimestre anterior
+      const elapsed = Math.round((t - firstOfQuarter) / 86400000) + 1;
+      const firstOfPrevQuarter = new Date(y, currentQuarter * 3 - 3, 1);
+      const cutoffPrevQ = new Date(firstOfPrevQuarter); cutoffPrevQ.setDate(cutoffPrevQ.getDate() + elapsed - 1);
+      prevStart = firstOfPrevQuarter.toISOString().slice(0, 10);
+      prevEnd = cutoffPrevQ.toISOString().slice(0, 10);
+      prevLabel = `${currentQuarter}T ${firstOfPrevQuarter.getFullYear()}`;
+      daysElapsed = elapsed;
+    } else if (period === "year") {
+      const firstOfYear = new Date(y, 0, 1);
+      start = firstOfYear.toISOString().slice(0, 10);
+      end = todayStr;
+      label = `${y}`;
+      // Comparativa: mismo número de días del año anterior
+      const elapsed = Math.round((t - firstOfYear) / 86400000) + 1;
+      const firstOfPrevYear = new Date(y - 1, 0, 1);
+      const cutoffPrevY = new Date(firstOfPrevYear); cutoffPrevY.setDate(cutoffPrevY.getDate() + elapsed - 1);
+      prevStart = firstOfPrevYear.toISOString().slice(0, 10);
+      prevEnd = cutoffPrevY.toISOString().slice(0, 10);
+      prevLabel = `${y - 1}`;
+      daysElapsed = elapsed;
+    } else { // last30
+      const start30 = new Date(t); start30.setDate(start30.getDate() - 29);
+      start = start30.toISOString().slice(0, 10);
+      end = todayStr;
+      label = "Últimos 30 días";
+      const start60 = new Date(t); start60.setDate(start60.getDate() - 59);
+      const end60 = new Date(t); end60.setDate(end60.getDate() - 30);
+      prevStart = start60.toISOString().slice(0, 10);
+      prevEnd = end60.toISOString().slice(0, 10);
+      prevLabel = "30d antes";
+      daysElapsed = 30;
+    }
+
+    return { start, end, label, prevStart, prevEnd, prevLabel, daysElapsed };
+  }, [period, monthOffset, state.watches.length]);
+
+  // ─── Cálculo de las 5 métricas para un rango de fechas ────────────────────
+  const computeMetrics = useMemo(() => {
+    return (startDate, endDate) => {
+      const ops = state.watches.filter(w =>
+        w.status === "sold"
+        && w.sale_date >= startDate
+        && w.sale_date <= endDate
+      );
+
+      const facturacion = ops.reduce((s, w) => s + (w.sale_price || 0) + (w.sale_shipping || 0), 0);
+
+      // Comisión base + IVA (usa Excel madre si está, sino fallback)
+      const comisionBaseSum = ops.reduce((s, w) => {
+        if (w.comision_canal_base != null) return s + Number(w.comision_canal_base);
+        if (w.sale_channel === "Catawiki") return s + (w.sale_price || 0) * 0.125 + 3;
+        const rate = w.sale_channel === "Chrono24" ? state.settings.chrono24_commission
+          : w.sale_channel === "Vinted" ? state.settings.vinted_commission : 0;
+        return s + (w.sale_price || 0) * rate / 100;
+      }, 0);
+      const ivaComisionSum = ops.reduce((s, w) => {
+        if (w.iva_comision != null) return s + Number(w.iva_comision);
+        const base = (w.comision_canal_base != null) ? Number(w.comision_canal_base)
+          : w.sale_channel === "Catawiki" ? (w.sale_price || 0) * 0.125 + 3
+          : (w.sale_price || 0) * (w.sale_channel === "Chrono24" ? state.settings.chrono24_commission : w.sale_channel === "Vinted" ? state.settings.vinted_commission : 0) / 100;
+        return s + base * 0.21;
+      }, 0);
+
+      const ingresoNeto = facturacion - comisionBaseSum - ivaComisionSum;
+
+      const costeCompra = ops.reduce((s, w) => s + (w.purchase_price || 0), 0);
+      const envioVentaBaseSum = ops.reduce((s, w) => s + (Number(w.envio_venta_base) || 0), 0);
+
+      const beneficioBruto = facturacion - costeCompra - comisionBaseSum - envioVentaBaseSum;
+
+      // Beneficio pre-IRPF: usa el cálculo del Excel madre si los campos están, sino aprox
+      const beneficioOpSum = ops.reduce((s, w) => {
+        if (w.beneficio_neto_pre_irpf != null) return s + Number(w.beneficio_neto_pre_irpf);
+        // Fallback simple
+        return s + ((w.sale_price || 0) + (w.sale_shipping || 0)) - (w.purchase_price || 0)
+          - (w.sale_channel === "Catawiki" ? (w.sale_price || 0) * 0.125 + 3 : 0);
+      }, 0);
+
+      // Prorrateo de gastos generales: usa los gastos del periodo proporcionalmente
+      const gastosBaseSum = (state.expenses || [])
+        .filter(e => e.deducible && e.date >= startDate && e.date <= endDate)
+        .reduce((s, e) => s + (e.base || 0), 0);
+
+      const beneficioPreIrpf = beneficioOpSum - gastosBaseSum;
+      const irpfRate = (state.settings.irpf_rate || 22) / 100;
+      const beneficioFinal = beneficioPreIrpf - Math.max(0, beneficioPreIrpf) * irpfRate;
+
+      return {
+        ops: ops.length,
+        facturacion,
+        ingresoNeto,
+        beneficioBruto,
+        beneficioPreIrpf,
+        beneficioFinal,
+        comisionTotal: comisionBaseSum + ivaComisionSum,
+      };
+    };
+  }, [state.watches, state.expenses, state.settings]);
+
+  const metricsThis = useMemo(() => computeMetrics(periodInfo.start, periodInfo.end), [computeMetrics, periodInfo]);
+  const metricsPrev = useMemo(() => computeMetrics(periodInfo.prevStart, periodInfo.prevEnd), [computeMetrics, periodInfo]);
+
+  // Delta en porcentaje
+  const pctDelta = (cur, prev) => {
+    if (!prev || prev === 0) return cur > 0 ? 100 : 0;
+    return Math.round((cur / prev - 1) * 100);
+  };
+
+  // Definición de tooltips para cada métrica
+  const TOOLTIPS = {
+    facturacion: {
+      title: "Facturación",
+      desc: "Lo que cobras al cliente. Aparece en tus facturas TL-XXXX.",
+      formula: "Precio venta + envío cobrado",
+    },
+    ingreso_neto: {
+      title: "Ingreso neto",
+      desc: "Lo que realmente te aterriza en cuenta tras quedarse Catawiki su comisión.",
+      formula: "Facturación − comisión canal con IVA",
+    },
+    beneficio_bruto: {
+      title: "Beneficio bruto",
+      desc: "Margen comercial de las operaciones. Sin descontar IVA ni gastos generales.",
+      formula: "Facturación − coste compra − comisión base − envío venta",
+    },
+    beneficio_pre_irpf: {
+      title: "Beneficio pre-IRPF",
+      desc: "Lo que Hacienda considera tu beneficio del periodo. Va al Modelo 130.",
+      formula: "Σ beneficio neto operación − gastos generales base",
+    },
+    beneficio_final: {
+      title: "Beneficio final",
+      desc: "El dinero que realmente queda en tu bolsillo tras todos los impuestos.",
+      formula: `Beneficio pre-IRPF × (1 − ${state.settings.irpf_rate || 22}%)`,
+    },
+  };
+
   const filtered = useMemo(() => {
     let list = allSales;
     if (tab !== "all") list = list.filter(w => w.status === tab);
@@ -2569,8 +2793,13 @@ const SalesView = ({ state, setView }) => {
       const qq = q.toLowerCase();
       list = list.filter(w => `${w.brand} ${w.model} ${w.customer_name || ""} ${w.sale_channel || ""}`.toLowerCase().includes(qq));
     }
+    // Filter by selected period
+    list = list.filter(w => {
+      const d = w.sale_date || w.returned_date || w.lost_date || w.purchase_date || "";
+      return d >= periodInfo.start && d <= periodInfo.end;
+    });
     return list;
-  }, [allSales, q, tab]);
+  }, [allSales, q, tab, periodInfo]);
 
   // Totals for current filter
   const totals = useMemo(() => {
@@ -2622,6 +2851,8 @@ const SalesView = ({ state, setView }) => {
 
   const saleDate = (w) => w.sale_date || w.returned_date || w.lost_date || w.purchase_date || "";
 
+
+
   return (
     <div className="px-4 pb-24 pt-4 space-y-3">
       <div className="pt-2">
@@ -2631,105 +2862,132 @@ const SalesView = ({ state, setView }) => {
         </div>
       </div>
 
-      {/* Metrics */}
-      <div className="grid grid-cols-2 gap-3">
-        <StatCard label="Facturación" value={euro(totals.revenue)} sub={`${totals.count} op${totals.count === 1 ? "" : "s"}`} icon={Euro} accent={C.gold} />
-        <StatCard label="Beneficio" value={euro(totals.profit)} sub={totals.count ? euro(totals.profit / Math.max(1, filtered.filter(w => w.status === "sold").length)) + "/op" : ""} icon={TrendingUp} accent={C.jade} />
+      {/* Period Selector */}
+      <div className="flex gap-1.5 overflow-x-auto pb-1" style={{ scrollbarWidth: "none" }}>
+        {[
+          { id: "today", label: "Hoy" },
+          { id: "month", label: "Mes" },
+          { id: "quarter", label: "Trim." },
+          { id: "year", label: "Año" },
+          { id: "last30", label: "Últ. 30d" },
+        ].map(p => (
+          <button key={p.id} onClick={() => { setPeriod(p.id); if (p.id !== "month") setMonthOffset(0); }}
+            className="py-2 px-3.5 rounded-xl text-xs font-semibold tracking-wide transition-all whitespace-nowrap flex-shrink-0"
+            style={{
+              background: period === p.id ? C.gold : "transparent",
+              color: period === p.id ? C.ink : C.dim,
+              border: `1px solid ${period === p.id ? C.gold : C.line}`,
+            }}>
+            {p.label}
+          </button>
+        ))}
       </div>
 
-      {/* Resumen mes actual vs anterior (Month-To-Date comparable) */}
-      {(() => {
-        const todayStr = today();
-        const thisMonth = todayStr.slice(0, 7);
-        const [y, m] = thisMonth.split("-").map(Number);
-        const dayOfMonth = parseInt(todayStr.slice(8, 10), 10); // día actual (1..31)
-        const prevDate = new Date(y, m - 2, 1);
-        const prevMonth = prevDate.toISOString().slice(0, 7);
+      {/* Month navigator (only when period === "month") */}
+      {period === "month" && (
+        <div className="flex items-center justify-between py-1">
+          <button onClick={() => setMonthOffset(monthOffset - 1)}
+            className="p-2 rounded-lg" style={{ background: C.raised, border: `1px solid ${C.line}`, color: C.cream }}>
+            <ChevronLeft size={14} />
+          </button>
+          <div className="text-sm font-serif" style={{ color: C.cream, fontFamily: "'Fraunces', serif" }}>
+            {periodInfo.label}
+          </div>
+          <button onClick={() => setMonthOffset(Math.min(0, monthOffset + 1))}
+            className="p-2 rounded-lg"
+            style={{
+              background: monthOffset >= 0 ? "transparent" : C.raised,
+              border: `1px solid ${C.line}`,
+              color: monthOffset >= 0 ? C.mute : C.cream,
+              opacity: monthOffset >= 0 ? 0.4 : 1,
+            }}
+            disabled={monthOffset >= 0}>
+            <ChevronRight size={14} />
+          </button>
+        </div>
+      )}
 
-        // Mes actual: ventas hasta hoy (incluido)
-        const opsThis = state.watches.filter(w => w.status === "sold" && (w.sale_date || "").startsWith(thisMonth));
+      {/* Period header (other periods) */}
+      {period !== "month" && (
+        <div className="text-center py-1">
+          <div className="text-sm font-serif" style={{ color: C.cream, fontFamily: "'Fraunces', serif" }}>
+            {periodInfo.label}
+          </div>
+        </div>
+      )}
 
-        // Mes anterior: SOLO hasta el mismo día (comparativa justa)
-        // Si hoy es día 4, comparamos abril días 1-4, NO abril completo
-        const opsPrev = state.watches.filter(w => {
-          if (w.status !== "sold") return false;
-          if (!(w.sale_date || "").startsWith(prevMonth)) return false;
-          const dayPrev = parseInt(w.sale_date.slice(8, 10), 10);
-          return dayPrev <= dayOfMonth;
-        });
+      {/* 5 KPIs with info tooltips */}
+      <div className="grid grid-cols-2 gap-3">
+        <KpiCardInfo
+          label="Facturación"
+          value={euro(metricsThis.facturacion)}
+          sub={`${metricsThis.ops} op${metricsThis.ops === 1 ? "" : "s"}`}
+          accent={C.gold}
+          info={() => setActiveTooltip("facturacion")}
+        />
+        <KpiCardInfo
+          label="Ingreso neto"
+          value={euro(metricsThis.ingresoNeto)}
+          sub="tras com. canal"
+          accent={C.cream}
+          info={() => setActiveTooltip("ingreso_neto")}
+        />
+        <KpiCardInfo
+          label="Beneficio bruto"
+          value={euro(metricsThis.beneficioBruto)}
+          sub={metricsThis.ops ? `${euro(metricsThis.beneficioBruto / metricsThis.ops)}/op` : ""}
+          accent={C.jade}
+          info={() => setActiveTooltip("beneficio_bruto")}
+        />
+        <KpiCardInfo
+          label="Beneficio pre-IRPF"
+          value={euro(metricsThis.beneficioPreIrpf)}
+          sub="resultado fiscal"
+          accent={C.copper}
+          info={() => setActiveTooltip("beneficio_pre_irpf")}
+        />
+      </div>
+      <KpiCardInfo
+        label="Beneficio final"
+        value={euro(metricsThis.beneficioFinal)}
+        sub={`tras IRPF ${state.settings.irpf_rate || 22}%`}
+        accent={C.jade}
+        full
+        info={() => setActiveTooltip("beneficio_final")}
+      />
 
-        const revThis = opsThis.reduce((s, w) => s + (w.sale_price || 0) + (w.sale_shipping || 0), 0);
-        const revPrev = opsPrev.reduce((s, w) => s + (w.sale_price || 0) + (w.sale_shipping || 0), 0);
+      {/* Comparativa vs periodo anterior */}
+      {(metricsPrev.ops > 0 || metricsThis.ops > 0) && (
+        <Card className="p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <TrendingUp size={14} style={{ color: C.gold }} />
+            <span className="text-xs tracking-widest uppercase font-bold" style={{ color: C.mute }}>
+              vs {periodInfo.prevLabel} {period === "month" || period === "quarter" || period === "year" ? "(mismo periodo)" : ""}
+            </span>
+          </div>
+          <div className="space-y-1.5 text-xs">
+            <ComparativaRow label="Ventas" cur={metricsThis.ops} prev={metricsPrev.ops} pct={pctDelta(metricsThis.ops, metricsPrev.ops)} format={(v) => v} />
+            <ComparativaRow label="Facturación" cur={metricsThis.facturacion} prev={metricsPrev.facturacion} pct={pctDelta(metricsThis.facturacion, metricsPrev.facturacion)} format={euro} />
+            <ComparativaRow label="Ingreso neto" cur={metricsThis.ingresoNeto} prev={metricsPrev.ingresoNeto} pct={pctDelta(metricsThis.ingresoNeto, metricsPrev.ingresoNeto)} format={euro} />
+            <ComparativaRow label="Beneficio bruto" cur={metricsThis.beneficioBruto} prev={metricsPrev.beneficioBruto} pct={pctDelta(metricsThis.beneficioBruto, metricsPrev.beneficioBruto)} format={euro} />
+            <ComparativaRow label="Beneficio pre-IRPF" cur={metricsThis.beneficioPreIrpf} prev={metricsPrev.beneficioPreIrpf} pct={pctDelta(metricsThis.beneficioPreIrpf, metricsPrev.beneficioPreIrpf)} format={euro} />
+          </div>
+        </Card>
+      )}
 
-        const profFn = (arr) => arr.reduce((s, w) => {
-          const rate = w.sale_channel === "Catawiki" ? state.settings.catawiki_commission
-            : w.sale_channel === "Chrono24" ? state.settings.chrono24_commission
-            : w.sale_channel === "Vinted" ? state.settings.vinted_commission : 0;
-          const commission = (w.sale_price || 0) * rate / 100 * 1.21;
-          const shipping = state.settings.envio_medio * 1.21;
-          return s + ((w.sale_price || 0) + (w.sale_shipping || 0) - (w.purchase_price || 0) - commission - shipping);
-        }, 0);
-        const profThis = profFn(opsThis);
-        const profPrev = profFn(opsPrev);
-
-        const delta = (cur, prev) => prev ? Math.round((cur / prev - 1) * 100) : (cur > 0 ? 100 : 0);
-        const revDelta = delta(revThis, revPrev);
-        const opsDelta = delta(opsThis.length, opsPrev.length);
-        const profDelta = delta(profThis, profPrev);
-
-        const months = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
-        const thisLabel = months[m - 1];
-        const prevLabel = months[(m - 2 + 12) % 12];
-
-        // Daily sparkline this month
-        const daysThisMonth = {};
-        opsThis.forEach(w => {
-          const d = w.sale_date.slice(8, 10);
-          daysThisMonth[d] = (daysThisMonth[d] || 0) + 1;
-        });
-        const sparkData = Object.entries(daysThisMonth).sort().map(([d, n]) => ({ day: d, ventas: n }));
-
-        return (
-          <Card className="p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <Calendar size={14} style={{ color: C.gold }} />
-                <span className="text-xs tracking-widest uppercase font-bold" style={{ color: C.mute }}>{thisLabel} {y}</span>
-              </div>
-              <span className="text-[10px]" style={{ color: C.dim }}>vs {prevLabel} (mismo día)</span>
+      {/* Tooltip Modal for metric info */}
+      {activeTooltip && (
+        <Modal title={TOOLTIPS[activeTooltip].title} onClose={() => setActiveTooltip(null)}>
+          <div className="space-y-3 text-sm" style={{ color: C.cream }}>
+            <p style={{ color: C.dim, lineHeight: 1.5 }}>{TOOLTIPS[activeTooltip].desc}</p>
+            <div className="p-3 rounded-lg" style={{ background: `${C.gold}08`, border: `1px solid ${C.gold}33` }}>
+              <div className="text-[10px] tracking-widest uppercase mb-1" style={{ color: C.mute }}>Fórmula</div>
+              <div className="font-mono text-xs" style={{ color: C.gold }}>{TOOLTIPS[activeTooltip].formula}</div>
             </div>
-            <div className="grid grid-cols-3 gap-2 mb-3">
-              <div>
-                <div className="text-[10px]" style={{ color: C.mute }}>Ventas</div>
-                <div className="font-serif text-lg leading-tight" style={{ color: C.cream, fontFamily: "'Fraunces', serif" }}>{opsThis.length}</div>
-                <div className="text-[10px] font-semibold" style={{ color: opsDelta >= 0 ? C.jade : C.ruby }}>
-                  {opsDelta >= 0 ? "+" : ""}{opsDelta}%
-                </div>
-              </div>
-              <div>
-                <div className="text-[10px]" style={{ color: C.mute }}>Ingresos</div>
-                <div className="font-serif text-lg leading-tight" style={{ color: C.cream, fontFamily: "'Fraunces', serif" }}>{euro(revThis)}</div>
-                <div className="text-[10px] font-semibold" style={{ color: revDelta >= 0 ? C.jade : C.ruby }}>
-                  {revDelta >= 0 ? "+" : ""}{revDelta}%
-                </div>
-              </div>
-              <div>
-                <div className="text-[10px]" style={{ color: C.mute }}>Beneficio</div>
-                <div className="font-serif text-lg leading-tight" style={{ color: C.gold, fontFamily: "'Fraunces', serif" }}>{euro(profThis)}</div>
-                <div className="text-[10px] font-semibold" style={{ color: profDelta >= 0 ? C.jade : C.ruby }}>
-                  {profDelta >= 0 ? "+" : ""}{profDelta}%
-                </div>
-              </div>
-            </div>
-            {sparkData.length > 1 && (
-              <ResponsiveContainer width="100%" height={40}>
-                <BarChart data={sparkData}>
-                  <Bar dataKey="ventas" fill={C.gold} radius={[2, 2, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </Card>
-        );
+          </div>
+        </Modal>
+      )}
+
       })()}
 
       {/* Search */}
