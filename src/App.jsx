@@ -1321,12 +1321,268 @@ const Dashboard = ({ state, setView, syncStatus }) => {
 const StockView = ({ state, setView, filter }) => {
   const [q, setQ] = useState("");
   const [tab, setTab] = useState(filter || "all");
+  const [period, setPeriod] = useState("month");
+  const [monthOffset, setMonthOffset] = useState(0);
+  const [activeTooltip, setActiveTooltip] = useState(null);
 
-  // Active = not sold/lost (includes stock, listed, returned)
+  // Stock activo = ni vendido, ni perdido, ni devuelto (devuelto se ve solo via filtro)
+  const stockActive = useMemo(() =>
+    state.watches.filter(w => w.status !== "sold" && w.status !== "lost" && w.status !== "returned")
+  , [state.watches]);
+
+  // Active (incluye returned para los filtros del listado)
   const active = state.watches.filter(w => w.status !== "sold" && w.status !== "lost");
+
+  // ─── Periodo activo: rango de fechas ───────────────────────────────────────
+  const periodInfo = useMemo(() => {
+    const todayStr = today();
+    const t = new Date(todayStr + "T00:00:00");
+    const y = t.getFullYear();
+    const m = t.getMonth();
+
+    let start, end, label, prevStart, prevEnd, prevLabel, daysElapsed;
+
+    if (period === "today") {
+      start = todayStr; end = todayStr; label = "Hoy";
+      const yest = new Date(t); yest.setDate(yest.getDate() - 1);
+      prevStart = yest.toISOString().slice(0, 10);
+      prevEnd = prevStart; prevLabel = "ayer"; daysElapsed = 1;
+    } else if (period === "month") {
+      const firstOfMonth = new Date(y, m + monthOffset, 1);
+      const firstOfNext = new Date(y, m + monthOffset + 1, 1);
+      const lastOfMonth = new Date(firstOfNext - 1);
+      start = firstOfMonth.toISOString().slice(0, 10);
+      end = (monthOffset === 0) ? todayStr : lastOfMonth.toISOString().slice(0, 10);
+      const months = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+      label = `${months[firstOfMonth.getMonth()]} ${firstOfMonth.getFullYear()}`;
+      const dayCutoff = (monthOffset === 0) ? t.getDate() : lastOfMonth.getDate();
+      const firstOfPrev = new Date(firstOfMonth.getFullYear(), firstOfMonth.getMonth() - 1, 1);
+      const cutoffPrev = new Date(firstOfMonth.getFullYear(), firstOfMonth.getMonth() - 1, dayCutoff);
+      prevStart = firstOfPrev.toISOString().slice(0, 10);
+      prevEnd = cutoffPrev.toISOString().slice(0, 10);
+      const monthsShort = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+      prevLabel = monthsShort[firstOfPrev.getMonth()];
+      daysElapsed = dayCutoff;
+    } else if (period === "quarter") {
+      const cq = Math.floor(m / 3);
+      const firstOfQ = new Date(y, cq * 3, 1);
+      start = firstOfQ.toISOString().slice(0, 10); end = todayStr;
+      label = `${cq + 1}T ${y}`;
+      const elapsed = Math.round((t - firstOfQ) / 86400000) + 1;
+      const firstOfPrevQ = new Date(y, cq * 3 - 3, 1);
+      const cutoffPrevQ = new Date(firstOfPrevQ); cutoffPrevQ.setDate(cutoffPrevQ.getDate() + elapsed - 1);
+      prevStart = firstOfPrevQ.toISOString().slice(0, 10);
+      prevEnd = cutoffPrevQ.toISOString().slice(0, 10);
+      prevLabel = `${cq}T ${firstOfPrevQ.getFullYear()}`;
+      daysElapsed = elapsed;
+    } else if (period === "year") {
+      const firstOfY = new Date(y, 0, 1);
+      start = firstOfY.toISOString().slice(0, 10); end = todayStr;
+      label = `${y}`;
+      const elapsed = Math.round((t - firstOfY) / 86400000) + 1;
+      const firstOfPrevY = new Date(y - 1, 0, 1);
+      const cutoffPrevY = new Date(firstOfPrevY); cutoffPrevY.setDate(cutoffPrevY.getDate() + elapsed - 1);
+      prevStart = firstOfPrevY.toISOString().slice(0, 10);
+      prevEnd = cutoffPrevY.toISOString().slice(0, 10);
+      prevLabel = `${y - 1}`; daysElapsed = elapsed;
+    } else { // last30
+      const start30 = new Date(t); start30.setDate(start30.getDate() - 29);
+      start = start30.toISOString().slice(0, 10); end = todayStr;
+      label = "Últimos 30 días";
+      const start60 = new Date(t); start60.setDate(start60.getDate() - 59);
+      const end60 = new Date(t); end60.setDate(end60.getDate() - 30);
+      prevStart = start60.toISOString().slice(0, 10);
+      prevEnd = end60.toISOString().slice(0, 10);
+      prevLabel = "30d antes"; daysElapsed = 30;
+    }
+    return { start, end, label, prevStart, prevEnd, prevLabel, daysElapsed };
+  }, [period, monthOffset, state.watches.length]);
+
+  // ─── Métricas estáticas (foto del stock HOY) ─────────────────────────────
+  const stockMetrics = useMemo(() => {
+    const todayStr = today();
+    const stockCount = stockActive.length;
+    const stockValue = stockActive.reduce((s, w) => s + (w.purchase_price || 0), 0);
+    const ticketMedio = stockCount ? stockValue / stockCount : 0;
+
+    // ROI medio histórico para estimar valor venta
+    const sold = state.watches.filter(w => w.status === "sold" && w.purchase_price > 0 && w.sale_price > 0);
+    const roiHistorico = sold.length
+      ? sold.reduce((s, w) => s + ((w.sale_price - w.purchase_price) / w.purchase_price), 0) / sold.length
+      : 0.78;
+    const valorEstimado = stockValue * (1 + roiHistorico);
+    const beneficioLatente = valorEstimado - stockValue;
+
+    // Días de inventario: a ritmo actual de venta, cuántos días tarda en agotarse
+    const last30Sales = state.watches.filter(w =>
+      w.status === "sold" && w.sale_date >= new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10)
+    );
+    const ritmoVentaDiario = last30Sales.length / 30;
+    const diasInventario = ritmoVentaDiario > 0 ? Math.round(stockCount / ritmoVentaDiario) : 0;
+
+    // Distribución por edad
+    const byAge = { fresh: [], maduro: [], alerta: [], anejo: [] };
+    stockActive.forEach(w => {
+      const days = daysBetween(w.purchase_date, todayStr);
+      if (days < 15) byAge.fresh.push(w);
+      else if (days < 45) byAge.maduro.push(w);
+      else if (days < 60) byAge.alerta.push(w);
+      else byAge.anejo.push(w);
+    });
+    const valByAge = {
+      fresh: byAge.fresh.reduce((s, w) => s + (w.purchase_price || 0), 0),
+      maduro: byAge.maduro.reduce((s, w) => s + (w.purchase_price || 0), 0),
+      alerta: byAge.alerta.reduce((s, w) => s + (w.purchase_price || 0), 0),
+      anejo: byAge.anejo.reduce((s, w) => s + (w.purchase_price || 0), 0),
+    };
+    const capitalBloqueado = valByAge.alerta + valByAge.anejo;
+
+    // % publicados
+    const published = stockActive.filter(w => w.status === "listed").length;
+    const pctPublished = stockCount ? Math.round(published / stockCount * 100) : 0;
+
+    // Distribución de tickets
+    const ticketRanges = { lt100: 0, range100_200: 0, range200_300: 0, gt300: 0 };
+    stockActive.forEach(w => {
+      const p = w.purchase_price || 0;
+      if (p < 100) ticketRanges.lt100++;
+      else if (p < 200) ticketRanges.range100_200++;
+      else if (p < 300) ticketRanges.range200_300++;
+      else ticketRanges.gt300++;
+    });
+
+    // Top marcas en stock
+    const byBrand = {};
+    stockActive.forEach(w => {
+      const b = w.brand || "Sin marca";
+      if (!byBrand[b]) byBrand[b] = { count: 0, value: 0 };
+      byBrand[b].count++;
+      byBrand[b].value += (w.purchase_price || 0);
+    });
+    const topBrands = Object.entries(byBrand)
+      .sort((a, b) => b[1].count - a[1].count)
+      .slice(0, 5);
+
+    return {
+      stockCount, stockValue, ticketMedio, valorEstimado, beneficioLatente,
+      diasInventario, roiHistorico, byAge, valByAge, capitalBloqueado,
+      published, pctPublished, ticketRanges, topBrands, ritmoVentaDiario,
+    };
+  }, [stockActive, state.watches]);
+
+  // ─── Métricas de COMPRAS del periodo ──────────────────────────────────────
+  const computePurchaseMetrics = useMemo(() => {
+    return (startDate, endDate) => {
+      const purchases = state.watches.filter(w =>
+        (w.purchase_date || "") >= startDate && (w.purchase_date || "") <= endDate
+      );
+      const count = purchases.length;
+      const totalSpent = purchases.reduce((s, w) => s + (w.purchase_price || 0), 0);
+      const avgTicket = count ? totalSpent / count : 0;
+
+      // Sourcing por proveedor
+      const bySupplier = {};
+      purchases.forEach(w => {
+        const s = w.purchase_source || "Sin proveedor";
+        if (!bySupplier[s]) bySupplier[s] = { count: 0, value: 0 };
+        bySupplier[s].count++;
+        bySupplier[s].value += (w.purchase_price || 0);
+      });
+      const sortedSuppliers = Object.entries(bySupplier)
+        .sort((a, b) => b[1].count - a[1].count);
+
+      return { count, totalSpent, avgTicket, suppliers: sortedSuppliers };
+    };
+  }, [state.watches]);
+
+  const purchasesThis = useMemo(() => computePurchaseMetrics(periodInfo.start, periodInfo.end), [computePurchaseMetrics, periodInfo]);
+  const purchasesPrev = useMemo(() => computePurchaseMetrics(periodInfo.prevStart, periodInfo.prevEnd), [computePurchaseMetrics, periodInfo]);
+
+  // Ventas del MISMO periodo para calcular coste/venta ratio
+  const salesInPeriod = useMemo(() => {
+    const ops = state.watches.filter(w =>
+      w.status === "sold"
+      && (w.sale_date || "") >= periodInfo.start
+      && (w.sale_date || "") <= periodInfo.end
+    );
+    return {
+      count: ops.length,
+      revenue: ops.reduce((s, w) => s + (w.sale_price || 0) + (w.sale_shipping || 0), 0),
+      cost: ops.reduce((s, w) => s + (w.purchase_price || 0), 0),
+    };
+  }, [state.watches, periodInfo]);
+
+  const costSalesRatio = salesInPeriod.cost ? purchasesThis.totalSpent / salesInPeriod.cost : 0;
+
+  const pctDelta = (cur, prev) => {
+    if (!prev || prev === 0) return cur > 0 ? 100 : 0;
+    return Math.round((cur / prev - 1) * 100);
+  };
+
+  // Tooltips
+  const TOOLTIPS = {
+    stock_activo: {
+      title: "Stock activo",
+      desc: "Relojes que tienes físicamente. No incluye vendidos, perdidos ni devueltos.",
+      formula: "count(watches WHERE status IN [stock, listed])",
+    },
+    capital_invertido: {
+      title: "Capital invertido",
+      desc: "Total pagado por tu stock actual. Es tu inversión inmovilizada.",
+      formula: "Σ purchase_price del stock activo",
+    },
+    valor_estimado: {
+      title: "Valor estimado de venta",
+      desc: "Lo que esperas obtener al vender todo tu stock, aplicando tu ROI histórico.",
+      formula: "capital × (1 + ROI medio histórico)",
+    },
+    dias_inventario: {
+      title: "Días de inventario",
+      desc: "Si dejaras de comprar hoy, cuántos días tardarías en agotar tu stock al ritmo actual de ventas.",
+      formula: "stock_count / (ventas_últimos_30d / 30)",
+    },
+    pct_publicado: {
+      title: "% publicado",
+      desc: "Porcentaje del stock que ya está en venta en algún canal. Si es bajo, tienes capital ocioso.",
+      formula: "count(status = listed) / stock_total × 100",
+    },
+    compras_periodo: {
+      title: "Compras del periodo",
+      desc: "Número de relojes adquiridos en el periodo seleccionado.",
+      formula: "count(purchases WHERE date IN periodo)",
+    },
+    inversion_periodo: {
+      title: "Inversión del periodo",
+      desc: "Dinero gastado en compras durante el periodo.",
+      formula: "Σ purchase_price de compras del periodo",
+    },
+    coste_venta_ratio: {
+      title: "Ratio coste/ventas",
+      desc: "Compras del periodo dividido por ventas del periodo. >1× = stock crece, <1× = stock decrece, =1× = estable.",
+      formula: "inversión_compras / coste_compra_de_ventas",
+    },
+    roi_esperado: {
+      title: "ROI esperado",
+      desc: "ROI medio histórico de tus ventas. Sirve de proxy para estimar rentabilidad futura del stock.",
+      formula: "media de (precio_venta − coste) / coste",
+    },
+    capital_bloqueado: {
+      title: "Capital bloqueado",
+      desc: "Capital invertido en relojes con más de 45 días en stock. Idealmente cero o muy bajo.",
+      formula: "Σ purchase_price WHERE días_en_stock > 45",
+    },
+    reposicion: {
+      title: "Necesidad de reposición",
+      desc: "A ritmo de ventas actual, cuántos relojes necesitas comprar al mes para mantener stock estable.",
+      formula: "ventas_diarias × 30",
+    },
+  };
+
 
   const filtered = useMemo(() => {
     let list = active.map(w => ({ ...w, days: daysBetween(w.purchase_date, today()) }));
+    // "Todo" excluye returned por defecto (consistente con KPIs)
+    if (tab === "all") list = list.filter(w => w.status !== "returned");
     if (tab === "aged") list = list.filter(w => w.days > 45 && (w.status === "stock" || w.status === "listed"));
     if (tab === "fresh") list = list.filter(w => w.days <= 15 && w.status === "stock");
     if (tab === "listed") list = list.filter(w => w.status === "listed");
@@ -1339,7 +1595,7 @@ const StockView = ({ state, setView, filter }) => {
   }, [active, q, tab]);
 
   const tabs = [
-    { id: "all", label: "Todo", count: active.length },
+    { id: "all", label: "Todo", count: active.filter(w => w.status !== "returned").length },
     { id: "fresh", label: "Fresco", count: active.filter(w => w.status === "stock" && daysBetween(w.purchase_date, today()) <= 15).length },
     { id: "listed", label: "Publicado", count: active.filter(w => w.status === "listed").length },
     { id: "aged", label: "Añejo", count: active.filter(w => (w.status === "stock" || w.status === "listed") && daysBetween(w.purchase_date, today()) > 45).length },
@@ -1364,10 +1620,302 @@ const StockView = ({ state, setView, filter }) => {
       <div className="flex items-baseline justify-between pt-2">
         <div>
           <h1 className="font-serif text-3xl" style={{ color: C.cream, fontFamily: "'Fraunces', serif", fontWeight: 300 }}>Stock</h1>
-          <div className="text-xs mt-1" style={{ color: C.dim }}>{active.length} activos · {euro(active.reduce((s, w) => s + (w.purchase_price || 0), 0))}</div>
+          <div className="text-xs mt-1" style={{ color: C.dim }}>{stockMetrics.stockCount} activos · {euro(stockMetrics.stockValue)}</div>
         </div>
         <Btn onClick={() => setView({ name: "add-watch" })} icon={Plus} variant="primary">Añadir</Btn>
       </div>
+
+      {/* === BLOQUE 1: STOCK ACTIVO (foto de hoy) === */}
+      <div className="grid grid-cols-2 gap-3">
+        <KpiCardInfo
+          label="Stock activo"
+          value={stockMetrics.stockCount}
+          sub={`Ticket medio €${stockMetrics.ticketMedio.toFixed(0)}`}
+          accent={C.cream}
+          info={() => setActiveTooltip("stock_activo")}
+        />
+        <KpiCardInfo
+          label="Capital invertido"
+          value={euro(stockMetrics.stockValue)}
+          sub="inmovilizado en stock"
+          accent={C.gold}
+          info={() => setActiveTooltip("capital_invertido")}
+        />
+        <KpiCardInfo
+          label="Valor estimado"
+          value={euro(stockMetrics.valorEstimado)}
+          sub={`+${euro(stockMetrics.beneficioLatente)} latente`}
+          accent={C.jade}
+          info={() => setActiveTooltip("valor_estimado")}
+        />
+        <KpiCardInfo
+          label="Días inventario"
+          value={stockMetrics.diasInventario || "—"}
+          sub={stockMetrics.ritmoVentaDiario > 0 ? `${stockMetrics.ritmoVentaDiario.toFixed(2)} ventas/día` : "sin ritmo"}
+          accent={stockMetrics.diasInventario > 90 ? C.amber : C.copper}
+          info={() => setActiveTooltip("dias_inventario")}
+        />
+      </div>
+
+      {/* === BLOQUE 2: COMPRAS DEL PERIODO === */}
+      <div className="flex gap-1.5 overflow-x-auto pb-1 pt-2" style={{ scrollbarWidth: "none" }}>
+        {[
+          { id: "today", label: "Hoy" },
+          { id: "month", label: "Mes" },
+          { id: "quarter", label: "Trim." },
+          { id: "year", label: "Año" },
+          { id: "last30", label: "Últ. 30d" },
+        ].map(p => (
+          <button key={p.id} onClick={() => { setPeriod(p.id); if (p.id !== "month") setMonthOffset(0); }}
+            className="py-2 px-3.5 rounded-xl text-xs font-semibold tracking-wide transition-all whitespace-nowrap flex-shrink-0"
+            style={{
+              background: period === p.id ? C.gold : "transparent",
+              color: period === p.id ? C.ink : C.dim,
+              border: `1px solid ${period === p.id ? C.gold : C.line}`,
+            }}>
+            {p.label}
+          </button>
+        ))}
+      </div>
+
+      {period === "month" && (
+        <div className="flex items-center justify-between py-1">
+          <button onClick={() => setMonthOffset(monthOffset - 1)}
+            className="p-2 rounded-lg" style={{ background: C.raised, border: `1px solid ${C.line}`, color: C.cream }}>
+            <ChevronLeft size={14} />
+          </button>
+          <div className="text-sm font-serif" style={{ color: C.cream, fontFamily: "'Fraunces', serif" }}>
+            {periodInfo.label}
+          </div>
+          <button onClick={() => setMonthOffset(Math.min(0, monthOffset + 1))}
+            className="p-2 rounded-lg"
+            style={{
+              background: monthOffset >= 0 ? "transparent" : C.raised,
+              border: `1px solid ${C.line}`,
+              color: monthOffset >= 0 ? C.mute : C.cream,
+              opacity: monthOffset >= 0 ? 0.4 : 1,
+            }}
+            disabled={monthOffset >= 0}>
+            <ChevronRight size={14} />
+          </button>
+        </div>
+      )}
+
+      {period !== "month" && (
+        <div className="text-center py-1">
+          <div className="text-sm font-serif" style={{ color: C.cream, fontFamily: "'Fraunces', serif" }}>
+            {periodInfo.label}
+          </div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-3">
+        <KpiCardInfo
+          label="Compras"
+          value={purchasesThis.count}
+          sub={`${(purchasesThis.count / Math.max(1, periodInfo.daysElapsed)).toFixed(2)}/día`}
+          accent={C.cream}
+          info={() => setActiveTooltip("compras_periodo")}
+        />
+        <KpiCardInfo
+          label="Inversión"
+          value={euro(purchasesThis.totalSpent)}
+          sub={purchasesThis.count ? `Ticket €${purchasesThis.avgTicket.toFixed(0)}` : ""}
+          accent={C.gold}
+          info={() => setActiveTooltip("inversion_periodo")}
+        />
+        <KpiCardInfo
+          label="Ratio C/V"
+          value={costSalesRatio ? costSalesRatio.toFixed(2) + "×" : "—"}
+          sub={costSalesRatio > 1.1 ? "stock crece" : costSalesRatio < 0.9 ? "stock decrece" : "estable"}
+          accent={costSalesRatio > 1.2 ? C.amber : costSalesRatio < 0.8 ? C.ruby : C.jade}
+          info={() => setActiveTooltip("coste_venta_ratio")}
+        />
+        <KpiCardInfo
+          label="ROI esperado"
+          value={`${(stockMetrics.roiHistorico * 100).toFixed(0)}%`}
+          sub="basado en histórico"
+          accent={C.jade}
+          info={() => setActiveTooltip("roi_esperado")}
+        />
+      </div>
+
+      {/* Comparativa vs periodo anterior */}
+      {(purchasesPrev.count > 0 || purchasesThis.count > 0) && (
+        <Card className="p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <TrendingUp size={14} style={{ color: C.gold }} />
+            <span className="text-xs tracking-widest uppercase font-bold" style={{ color: C.mute }}>
+              vs {periodInfo.prevLabel} (mismo periodo)
+            </span>
+          </div>
+          <div className="space-y-1.5 text-xs">
+            <ComparativaRow label="Compras" cur={purchasesThis.count} prev={purchasesPrev.count} pct={pctDelta(purchasesThis.count, purchasesPrev.count)} format={(v) => v} />
+            <ComparativaRow label="Inversión" cur={purchasesThis.totalSpent} prev={purchasesPrev.totalSpent} pct={pctDelta(purchasesThis.totalSpent, purchasesPrev.totalSpent)} format={euro} />
+            <ComparativaRow label="Ticket medio" cur={purchasesThis.avgTicket} prev={purchasesPrev.avgTicket} pct={pctDelta(purchasesThis.avgTicket, purchasesPrev.avgTicket)} format={(v) => "€" + v.toFixed(0)} />
+          </div>
+        </Card>
+      )}
+
+      {/* === BLOQUE 3: SALUD DEL PIPELINE === */}
+      <Card className="p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Activity size={14} style={{ color: C.gold }} />
+          <span className="text-xs tracking-widest uppercase font-bold" style={{ color: C.mute }}>Edad del stock</span>
+        </div>
+        <div className="space-y-2 text-xs">
+          {[
+            { label: "Fresco (<15d)", color: C.jade, n: stockMetrics.byAge.fresh.length, val: stockMetrics.valByAge.fresh },
+            { label: "Maduro (15-45d)", color: C.gold, n: stockMetrics.byAge.maduro.length, val: stockMetrics.valByAge.maduro },
+            { label: "Alerta (45-60d)", color: C.amber, n: stockMetrics.byAge.alerta.length, val: stockMetrics.valByAge.alerta },
+            { label: "Añejo (>60d)", color: C.ruby, n: stockMetrics.byAge.anejo.length, val: stockMetrics.valByAge.anejo },
+          ].map(b => {
+            const pct = stockMetrics.stockCount ? (b.n / stockMetrics.stockCount * 100) : 0;
+            return (
+              <div key={b.label} className="flex items-center gap-3">
+                <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: b.color }} />
+                <span className="flex-1" style={{ color: C.dim }}>{b.label}</span>
+                <span style={{ color: C.cream, minWidth: 38, textAlign: "right" }}>{b.n} ud</span>
+                <span style={{ color: C.mute, minWidth: 60, textAlign: "right" }}>{euro(b.val)}</span>
+              </div>
+            );
+          })}
+          {stockMetrics.capitalBloqueado > 0 && (
+            <div className="pt-2 mt-1 flex items-center justify-between" style={{ borderTop: `1px solid ${C.line}` }}>
+              <span style={{ color: C.amber }}>Capital bloqueado &gt;45d</span>
+              <span className="font-semibold" style={{ color: C.amber }}>{euro(stockMetrics.capitalBloqueado)}</span>
+            </div>
+          )}
+        </div>
+      </Card>
+
+      {/* === BLOQUE 4: PUBLICACIÓN === */}
+      <Card className="p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <ListChecks size={14} style={{ color: C.gold }} />
+          <span className="text-xs tracking-widest uppercase font-bold" style={{ color: C.mute }}>Estado de publicación</span>
+          <button onClick={() => setActiveTooltip("pct_publicado")} className="ml-auto p-0.5">
+            <Info size={11} style={{ color: C.mute }} />
+          </button>
+        </div>
+        <div className="flex items-baseline justify-between mb-2">
+          <span className="font-serif text-2xl" style={{ color: stockMetrics.pctPublished < 50 ? C.amber : C.jade, fontFamily: "'Fraunces', serif", fontWeight: 300 }}>
+            {stockMetrics.pctPublished}%
+          </span>
+          <span className="text-xs" style={{ color: C.dim }}>
+            {stockMetrics.published}/{stockMetrics.stockCount} publicados
+          </span>
+        </div>
+        <div className="h-1.5 rounded-full overflow-hidden" style={{ background: C.line }}>
+          <div className="h-full transition-all" style={{
+            width: `${stockMetrics.pctPublished}%`,
+            background: stockMetrics.pctPublished < 50 ? C.amber : C.jade,
+          }} />
+        </div>
+        {stockMetrics.pctPublished < 50 && (
+          <div className="text-[10px] mt-2" style={{ color: C.amber }}>
+            ⚠ {stockMetrics.stockCount - stockMetrics.published} relojes sin publicar = capital ocioso
+          </div>
+        )}
+      </Card>
+
+      {/* === BLOQUE 5: SOURCING POR PROVEEDOR === */}
+      {purchasesThis.suppliers.length > 0 && (
+        <Card className="p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Building2 size={14} style={{ color: C.gold }} />
+            <span className="text-xs tracking-widest uppercase font-bold" style={{ color: C.mute }}>Sourcing del periodo</span>
+          </div>
+          <div className="space-y-2 text-xs">
+            {purchasesThis.suppliers.map(([name, data]) => {
+              const avg = data.count ? data.value / data.count : 0;
+              return (
+                <div key={name} className="flex items-center gap-3">
+                  <span className="flex-1 truncate" style={{ color: C.cream }}>{name}</span>
+                  <span style={{ color: C.mute, minWidth: 38, textAlign: "right" }}>{data.count} ud</span>
+                  <span style={{ color: C.cream, minWidth: 65, textAlign: "right" }}>{euro(data.value)}</span>
+                  <span style={{ color: C.dim, minWidth: 50, textAlign: "right" }}>€{avg.toFixed(0)}/u</span>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      )}
+
+      {/* === BLOQUE 6: TOP MARCAS Y DISTRIBUCIÓN DE TICKETS === */}
+      <div className="grid grid-cols-1 gap-3">
+        {stockMetrics.topBrands.length > 0 && (
+          <Card className="p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Award size={14} style={{ color: C.gold }} />
+              <span className="text-xs tracking-widest uppercase font-bold" style={{ color: C.mute }}>Top marcas en stock</span>
+            </div>
+            <div className="space-y-2 text-xs">
+              {stockMetrics.topBrands.map(([brand, data]) => (
+                <div key={brand} className="flex items-center gap-3">
+                  <span className="flex-1 truncate font-serif" style={{ color: C.cream, fontFamily: "'Fraunces', serif" }}>{brand}</span>
+                  <span style={{ color: C.mute, minWidth: 40, textAlign: "right" }}>{data.count} ud</span>
+                  <span style={{ color: C.gold, minWidth: 65, textAlign: "right" }}>{euro(data.value)}</span>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
+
+        <Card className="p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <BarChart3 size={14} style={{ color: C.gold }} />
+            <span className="text-xs tracking-widest uppercase font-bold" style={{ color: C.mute }}>Distribución por ticket</span>
+          </div>
+          <div className="space-y-1.5 text-xs">
+            {[
+              { label: "&lt; €100", n: stockMetrics.ticketRanges.lt100 },
+              { label: "€100 - €200", n: stockMetrics.ticketRanges.range100_200 },
+              { label: "€200 - €300", n: stockMetrics.ticketRanges.range200_300 },
+              { label: "&gt; €300", n: stockMetrics.ticketRanges.gt300 },
+            ].map(b => {
+              const pct = stockMetrics.stockCount ? (b.n / stockMetrics.stockCount * 100) : 0;
+              return (
+                <div key={b.label} className="flex items-center gap-3">
+                  <span className="w-20" style={{ color: C.dim }} dangerouslySetInnerHTML={{ __html: b.label }} />
+                  <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: C.line }}>
+                    <div className="h-full" style={{ width: `${pct}%`, background: C.gold }} />
+                  </div>
+                  <span style={{ color: C.cream, minWidth: 35, textAlign: "right" }}>{b.n}</span>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      </div>
+
+      {/* === BLOQUE 7: NECESIDAD DE REPOSICIÓN === */}
+      {stockMetrics.ritmoVentaDiario > 0 && (
+        <Card className="p-3" style={{ background: `${C.copper}0a`, border: `1px solid ${C.copper}33` }}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Target size={14} style={{ color: C.copper }} />
+              <span className="text-xs" style={{ color: C.copper, fontWeight: 500 }}>Para mantener stock estable: {Math.round(stockMetrics.ritmoVentaDiario * 30)} compras/mes</span>
+            </div>
+            <button onClick={() => setActiveTooltip("reposicion")} className="p-0.5">
+              <Info size={11} style={{ color: C.mute }} />
+            </button>
+          </div>
+        </Card>
+      )}
+
+      {/* Tooltip Modal */}
+      {activeTooltip && (
+        <Modal title={TOOLTIPS[activeTooltip].title} onClose={() => setActiveTooltip(null)}>
+          <div className="space-y-3 text-sm" style={{ color: C.cream }}>
+            <p style={{ color: C.dim, lineHeight: 1.5 }}>{TOOLTIPS[activeTooltip].desc}</p>
+            <div className="p-3 rounded-lg" style={{ background: `${C.gold}08`, border: `1px solid ${C.gold}33` }}>
+              <div className="text-[10px] tracking-widest uppercase mb-1" style={{ color: C.mute }}>Fórmula</div>
+              <div className="font-mono text-xs" style={{ color: C.gold }}>{TOOLTIPS[activeTooltip].formula}</div>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       <div className="flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: C.raised, border: `1px solid ${C.line}` }}>
         <Search size={14} style={{ color: C.mute }} />
