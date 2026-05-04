@@ -2637,16 +2637,26 @@ const SalesView = ({ state, setView }) => {
         <StatCard label="Beneficio" value={euro(totals.profit)} sub={totals.count ? euro(totals.profit / Math.max(1, filtered.filter(w => w.status === "sold").length)) + "/op" : ""} icon={TrendingUp} accent={C.jade} />
       </div>
 
-      {/* Resumen mes actual vs anterior */}
+      {/* Resumen mes actual vs anterior (Month-To-Date comparable) */}
       {(() => {
         const todayStr = today();
         const thisMonth = todayStr.slice(0, 7);
         const [y, m] = thisMonth.split("-").map(Number);
+        const dayOfMonth = parseInt(todayStr.slice(8, 10), 10); // día actual (1..31)
         const prevDate = new Date(y, m - 2, 1);
         const prevMonth = prevDate.toISOString().slice(0, 7);
 
+        // Mes actual: ventas hasta hoy (incluido)
         const opsThis = state.watches.filter(w => w.status === "sold" && (w.sale_date || "").startsWith(thisMonth));
-        const opsPrev = state.watches.filter(w => w.status === "sold" && (w.sale_date || "").startsWith(prevMonth));
+
+        // Mes anterior: SOLO hasta el mismo día (comparativa justa)
+        // Si hoy es día 4, comparamos abril días 1-4, NO abril completo
+        const opsPrev = state.watches.filter(w => {
+          if (w.status !== "sold") return false;
+          if (!(w.sale_date || "").startsWith(prevMonth)) return false;
+          const dayPrev = parseInt(w.sale_date.slice(8, 10), 10);
+          return dayPrev <= dayOfMonth;
+        });
 
         const revThis = opsThis.reduce((s, w) => s + (w.sale_price || 0) + (w.sale_shipping || 0), 0);
         const revPrev = opsPrev.reduce((s, w) => s + (w.sale_price || 0) + (w.sale_shipping || 0), 0);
@@ -2686,7 +2696,7 @@ const SalesView = ({ state, setView }) => {
                 <Calendar size={14} style={{ color: C.gold }} />
                 <span className="text-xs tracking-widest uppercase font-bold" style={{ color: C.mute }}>{thisLabel} {y}</span>
               </div>
-              <span className="text-[10px]" style={{ color: C.dim }}>vs {prevLabel}</span>
+              <span className="text-[10px]" style={{ color: C.dim }}>vs {prevLabel} (mismo día)</span>
             </div>
             <div className="grid grid-cols-3 gap-2 mb-3">
               <div>
