@@ -144,6 +144,11 @@ export const listPendingInvoicesGas = async () => {
   return await callGas("invoice_pending_list");
 };
 
+// ─── Offers (bot scanner integration) ───────────────────────────────
+export const updateOfferDecisionGas = async (params) => {
+  return await callGas("update_offer_decision", { params });
+};
+
 // ─── Sync queue (operations to retry if offline) ────────────────────
 const QUEUE_KEY = "timelab:sync:queue";
 
