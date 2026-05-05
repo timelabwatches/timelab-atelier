@@ -3536,8 +3536,6 @@ const SalesView = ({ state, setView }) => {
         </Modal>
       )}
 
-      })()}
-
       {/* Search */}
       <div className="flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: C.raised, border: `1px solid ${C.line}` }}>
         <Search size={14} style={{ color: C.mute }} />
