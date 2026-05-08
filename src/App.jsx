@@ -5622,7 +5622,7 @@ export default function App() {
     const loadingText = url
       ? (syncStatus.status === "syncing" ? syncingPhases[loadingPhase] : "Conectando...")
       : "Cargando atelier...";
-    const logoUrl = `${import.meta.env.BASE_URL}timelab-logo.jpg`;
+    const logoUrl = `${import.meta.env.BASE_URL}timelab-logo.png`;
     return (
       <Shell>
         <style>{`
