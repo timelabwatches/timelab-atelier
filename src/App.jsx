@@ -5582,18 +5582,41 @@ export default function App() {
     const loadingText = url
       ? (syncStatus.status === "syncing" ? syncingPhases[loadingPhase] : "Conectando...")
       : "Cargando atelier...";
+    const logoUrl = `${import.meta.env.BASE_URL}icon.svg`;
     return (
       <Shell>
-        <div className="min-h-screen flex items-center justify-center">
-          <div className="text-center">
-            <div className="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center animate-pulse" style={{
-              background: `radial-gradient(circle, ${C.gold}33 0%, transparent 70%)`,
-              border: `1px solid ${C.gold}`
-            }}>
-              <Watch size={24} style={{ color: C.gold }} />
-            </div>
-            <div className="font-serif text-lg" style={{ color: C.cream, fontFamily: "'Fraunces', serif" }}>TIMELAB</div>
-            <div className="text-[10px] tracking-widest uppercase mt-1" style={{ color: C.mute }}>{loadingText}</div>
+        <style>{`
+          @keyframes timelab-splash-in {
+            0%   { opacity: 0; transform: scale(0.96); }
+            100% { opacity: 1; transform: scale(1); }
+          }
+          @keyframes timelab-splash-breath {
+            0%, 100% { opacity: 0.92; }
+            50%      { opacity: 1; }
+          }
+          .timelab-splash-logo {
+            animation: timelab-splash-in 600ms cubic-bezier(0.2, 0.7, 0.2, 1) both,
+                       timelab-splash-breath 3.2s ease-in-out 700ms infinite;
+          }
+          .timelab-splash-status {
+            animation: timelab-splash-in 600ms cubic-bezier(0.2, 0.7, 0.2, 1) 250ms both;
+          }
+        `}</style>
+        <div className="min-h-screen flex flex-col items-center justify-center px-8" style={{
+          paddingTop: "env(safe-area-inset-top, 0px)",
+          paddingBottom: "calc(2rem + env(safe-area-inset-bottom, 0px))",
+        }}>
+          <img
+            src={logoUrl}
+            alt="TIMELAB"
+            className="timelab-splash-logo"
+            style={{ width: "min(70vw, 280px)", height: "auto", display: "block" }}
+          />
+          <div
+            className="timelab-splash-status text-[10px] tracking-[0.25em] uppercase mt-10"
+            style={{ color: C.mute }}
+          >
+            {loadingText}
           </div>
         </div>
       </Shell>
