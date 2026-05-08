@@ -1,3 +1,62 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer components {
+  /* Inputs / selects / textareas: focus ring sutil en gold */
+  .timelab-input {
+    transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+  }
+  .timelab-input:focus,
+  .timelab-input:focus-visible {
+    border-color: #C9A961 !important;
+    box-shadow: 0 0 0 3px rgba(201, 169, 97, 0.18);
+    outline: none;
+  }
+  .timelab-input::placeholder {
+    color: rgba(168, 146, 120, 0.55);
+  }
+
+  /* Search bar wrapper: focus ring cuando el input interno tiene foco */
+  .timelab-search {
+    transition: border-color 160ms ease, box-shadow 160ms ease;
+  }
+  .timelab-search:focus-within {
+    border-color: #C9A961 !important;
+    box-shadow: 0 0 0 3px rgba(201, 169, 97, 0.18);
+  }
+
+  /* Glassmorphism premium para overlays sobre contenido scrolleable */
+  .timelab-glass {
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+  }
+  .timelab-glass-strong {
+    backdrop-filter: blur(22px) saturate(150%);
+    -webkit-backdrop-filter: blur(22px) saturate(150%);
+  }
+
+  /* Microinteracción uniforme en elementos pulsables */
+  .timelab-press {
+    transition: transform 140ms cubic-bezier(0.2, 0.7, 0.2, 1),
+                background-color 160ms ease,
+                box-shadow 200ms ease,
+                opacity 160ms ease;
+    will-change: transform;
+  }
+  .timelab-press:active {
+    transform: scale(0.96);
+  }
+
+  /* Card con leve elevación al hover (solo tacto fino — desktop) */
+  @media (hover: hover) {
+    .timelab-card-hover {
+      transition: transform 220ms ease, box-shadow 220ms ease;
+    }
+    .timelab-card-hover:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45),
+                  inset 0 1px 0 rgba(232, 220, 196, 0.06);
+    }
+  }
+}
