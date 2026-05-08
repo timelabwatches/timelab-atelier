@@ -688,7 +688,7 @@ const Btn = ({ children, onClick, variant = "primary", icon: Icon, full, disable
   const s = styles[variant];
   return (
     <button onClick={onClick} disabled={disabled}
-      className={`inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold tracking-wide transition-all active:scale-95 ${full ? "w-full" : ""} ${disabled ? "opacity-40" : "hover:opacity-90"} ${className}`}
+      className={`timelab-press inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold tracking-wide ${full ? "w-full" : ""} ${disabled ? "opacity-40" : "hover:opacity-90"} ${className}`}
       style={{ background: s.bg, color: s.fg, border: `1px solid ${s.border}` }}>
       {Icon && <Icon size={16} strokeWidth={2} />}
       {children}
@@ -701,19 +701,19 @@ const Field = ({ label, value, onChange, type = "text", placeholder, options, ro
     <span className="block text-xs font-semibold tracking-widest uppercase mb-1.5" style={{ color: C.mute }}>{label}</span>
     {options ? (
       <select value={value || ""} onChange={(e) => onChange(e.target.value)}
-        className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
+        className="timelab-input w-full px-3 py-2.5 rounded-xl text-sm outline-none"
         style={{ background: C.raised, color: C.cream, border: `1px solid ${C.line}` }}>
         <option value="">—</option>
         {options.map(o => <option key={o} value={o}>{o}</option>)}
       </select>
     ) : rows ? (
       <textarea value={value || ""} onChange={(e) => onChange(e.target.value)} rows={rows} placeholder={placeholder}
-        className="w-full px-3 py-2.5 rounded-xl text-sm outline-none resize-none"
+        className="timelab-input w-full px-3 py-2.5 rounded-xl text-sm outline-none resize-none"
         style={{ background: C.raised, color: C.cream, border: `1px solid ${C.line}` }} />
     ) : (
       <input type={type} value={value ?? ""} onChange={(e) => onChange(type === "number" ? parseFloat(e.target.value) || 0 : e.target.value)}
         placeholder={placeholder}
-        className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
+        className="timelab-input w-full px-3 py-2.5 rounded-xl text-sm outline-none"
         style={{ background: C.raised, color: C.cream, border: `1px solid ${C.line}` }} />
     )}
   </label>
@@ -1932,7 +1932,7 @@ const StockView = ({ state, setView, filter }) => {
         </Modal>
       )}
 
-      <div className="flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: C.raised, border: `1px solid ${C.line}` }}>
+      <div className="timelab-search flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: C.raised, border: `1px solid ${C.line}` }}>
         <Search size={14} style={{ color: C.mute }} />
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Marca, modelo, proveedor..."
           className="flex-1 bg-transparent outline-none text-sm" style={{ color: C.cream }} />
@@ -2765,9 +2765,9 @@ const Timeline = ({ events, onAddNote }) => {
 const Modal = ({ title, onClose, children }) => (
   <div
     onClick={onClose}
-    className="fixed inset-0 z-50 flex items-center justify-center"
+    className="timelab-glass fixed inset-0 z-50 flex items-center justify-center"
     style={{
-      background: "rgba(0,0,0,0.75)",
+      background: "rgba(10, 9, 8, 0.62)",
       padding: "1rem",
       // En móvil, reservamos espacio abajo para la bottom nav (+ home indicator)
       paddingBottom: "calc(6rem + env(safe-area-inset-bottom, 0px))",
@@ -2780,6 +2780,7 @@ const Modal = ({ title, onClose, children }) => (
       style={{
         background: C.surface,
         border: `1px solid ${C.line}`,
+        boxShadow: "0 24px 60px rgba(0,0,0,0.55), inset 0 1px 0 rgba(232,220,196,0.06)",
         // Modal jamás más alto que lo que permite la pantalla menos la bottom nav
         maxHeight: "calc(100vh - 7rem - env(safe-area-inset-bottom, 0px) - env(safe-area-inset-top, 0px))",
       }}
@@ -3914,7 +3915,7 @@ const SalesView = ({ state, setView }) => {
       )}
 
       {/* Search */}
-      <div className="flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: C.raised, border: `1px solid ${C.line}` }}>
+      <div className="timelab-search flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: C.raised, border: `1px solid ${C.line}` }}>
         <Search size={14} style={{ color: C.mute }} />
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Marca, modelo, cliente, canal..."
           className="flex-1 bg-transparent outline-none text-sm" style={{ color: C.cream }} />
@@ -4438,7 +4439,7 @@ const CompsView = ({ state, dispatch, setView, goBack }) => {
         </Card>
       )}
 
-      <div className="flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: C.raised, border: `1px solid ${C.line}` }}>
+      <div className="timelab-search flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: C.raised, border: `1px solid ${C.line}` }}>
         <Search size={14} style={{ color: C.mute }} />
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar marca o modelo..."
           className="flex-1 bg-transparent outline-none text-sm" style={{ color: C.cream }} />
@@ -5029,10 +5030,10 @@ const BottomNav = ({ view, setView }) => {
       background: `linear-gradient(to top, ${C.ink} 70%, transparent)`,
       zIndex: 50
     }}>
-      <div className="flex items-center justify-around rounded-2xl p-1.5" style={{
-        background: C.coal,
+      <div className="timelab-glass-strong flex items-center justify-around rounded-2xl p-1.5" style={{
+        background: `${C.coal}cc`,
         border: `1px solid ${C.line}`,
-        boxShadow: `0 -4px 20px rgba(0,0,0,0.5)`
+        boxShadow: `0 -4px 20px rgba(0,0,0,0.5), inset 0 1px 0 rgba(232,220,196,0.05)`
       }}>
         {items.map(it => {
           const isActive = active === it.id ||
@@ -5042,7 +5043,7 @@ const BottomNav = ({ view, setView }) => {
                            (it.id === "settings" && active === "comps");
           return (
             <button key={it.id} onClick={() => setView({ name: it.id })}
-              className="flex flex-col items-center justify-center py-1.5 px-2 rounded-xl transition-all flex-1"
+              className="timelab-press flex flex-col items-center justify-center py-1.5 px-2 rounded-xl flex-1"
               style={{
                 background: isActive ? `${C.gold}15` : "transparent",
                 color: isActive ? C.gold : C.mute
