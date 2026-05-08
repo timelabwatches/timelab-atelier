@@ -1,30 +1,52 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <defs>
-    <radialGradient id="dial" cx="50%" cy="40%" r="55%">
-      <stop offset="0%" stop-color="#2A2319"/>
-      <stop offset="60%" stop-color="#16120E"/>
-      <stop offset="100%" stop-color="#0A0908"/>
-    </radialGradient>
-    <linearGradient id="hand" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#C9A961"/>
-      <stop offset="100%" stop-color="#B87333"/>
-    </linearGradient>
-  </defs>
-  <rect width="512" height="512" rx="96" fill="#0A0908"/>
-  <circle cx="256" cy="256" r="200" fill="url(#dial)" stroke="#3A2F22" stroke-width="3"/>
-  <circle cx="256" cy="256" r="190" fill="none" stroke="#3A2F22" stroke-width="1" stroke-dasharray="2 10"/>
-  <!-- hour markers -->
-  <g fill="#E8DCC4">
-    <rect x="252" y="72" width="8" height="28" rx="2"/>
-    <rect x="252" y="412" width="8" height="28" rx="2"/>
-    <rect x="72" y="252" width="28" height="8" rx="2"/>
-    <rect x="412" y="252" width="28" height="8" rx="2"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="TIMELAB">
+  <rect width="512" height="512" fill="#0A0908"/>
+  <g stroke="#F1ECE0" stroke-linecap="round" fill="none">
+    <!-- correa superior -->
+    <line x1="226" y1="40" x2="226" y2="138" stroke-width="3"/>
+    <line x1="286" y1="40" x2="286" y2="138" stroke-width="3"/>
+    <!-- correa inferior -->
+    <line x1="226" y1="306" x2="226" y2="396" stroke-width="3"/>
+    <line x1="286" y1="306" x2="286" y2="396" stroke-width="3"/>
   </g>
-  <!-- hands -->
-  <rect x="252" y="130" width="8" height="130" rx="4" fill="url(#hand)" transform="rotate(35 256 256)"/>
-  <rect x="252" y="170" width="6" height="90" rx="3" fill="url(#hand)" transform="rotate(-65 256 256)"/>
-  <circle cx="256" cy="256" r="10" fill="#C9A961"/>
-  <circle cx="256" cy="256" r="4" fill="#0A0908"/>
-  <!-- brand mark -->
-  <text x="256" y="360" text-anchor="middle" fill="#C9A961" font-family="Georgia, serif" font-size="24" font-weight="300" letter-spacing="4">TIMELAB</text>
+  <!-- caja externa -->
+  <circle cx="256" cy="222" r="92" fill="none" stroke="#F1ECE0" stroke-width="6"/>
+  <!-- aro interior fino -->
+  <circle cx="256" cy="222" r="82" fill="none" stroke="#F1ECE0" stroke-width="1.2" opacity="0.55"/>
+  <!-- esfera -->
+  <circle cx="256" cy="222" r="80" fill="#0A0908"/>
+  <!-- corona (3 en punto) -->
+  <rect x="349" y="216" width="8" height="12" rx="1.5" fill="#F1ECE0"/>
+  <!-- marcas cardinales (12, 3, 6, 9) más gruesas -->
+  <g fill="#F1ECE0">
+    <rect x="253.5" y="148" width="5" height="14" rx="1"/>
+    <rect x="316" y="219.5" width="14" height="5" rx="1"/>
+    <rect x="253.5" y="282" width="5" height="14" rx="1"/>
+    <rect x="182" y="219.5" width="14" height="5" rx="1"/>
+  </g>
+  <!-- marcas intermedias (1, 2, 4, 5, 7, 8, 10, 11) -->
+  <g stroke="#F1ECE0" stroke-width="2.4" stroke-linecap="round">
+    <line x1="291" y1="156.5" x2="294.5" y2="166.2"/>
+    <line x1="319.5" y1="184.5" x2="310" y2="188"/>
+    <line x1="319.5" y1="259.5" x2="310" y2="256"/>
+    <line x1="291" y1="287.5" x2="294.5" y2="277.8"/>
+    <line x1="221" y1="287.5" x2="217.5" y2="277.8"/>
+    <line x1="192.5" y1="259.5" x2="202" y2="256"/>
+    <line x1="192.5" y1="184.5" x2="202" y2="188"/>
+    <line x1="221" y1="156.5" x2="217.5" y2="166.2"/>
+  </g>
+  <!-- manecillas en pose clásica 10:10 -->
+  <g stroke="#F1ECE0" stroke-linecap="round">
+    <line x1="256" y1="222" x2="213" y2="197" stroke-width="4.5"/>
+    <line x1="256" y1="222" x2="315" y2="188" stroke-width="3.2"/>
+  </g>
+  <!-- pivote central -->
+  <circle cx="256" cy="222" r="4.2" fill="#F1ECE0"/>
+  <!-- wordmark -->
+  <text x="256" y="448"
+        text-anchor="middle"
+        fill="#FFFFFF"
+        font-family="'Manrope', 'Helvetica Neue', Arial, sans-serif"
+        font-weight="200"
+        font-size="58"
+        letter-spacing="8">TIMELAB</text>
 </svg>
