@@ -989,7 +989,11 @@ const Dashboard = ({ state, setView, syncStatus }) => {
           background: `radial-gradient(circle, ${C.gold}22 0%, transparent 70%)`,
           border: `1px solid ${C.gold}55`
         }}>
-          <TimelabMark size={28} color={C.gold} />
+          <img
+            src={`${import.meta.env.BASE_URL}timelab-logo.png`}
+            alt="TIMELAB"
+            style={{ height: 44, width: "auto", display: "block", objectFit: "contain" }}
+          />
           {syncStatus && getGasConfig().url && (
             <div className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full flex items-center justify-center" style={{
               background: C.coal,
