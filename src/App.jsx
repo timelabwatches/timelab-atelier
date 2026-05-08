@@ -665,25 +665,28 @@ const TimelabMark = ({ size = 24, color, strokeWidth = 1, className = "", style 
     focusable="false"
   >
     <g stroke="currentColor" strokeLinecap="round" fill="none">
-      <circle cx="50" cy="50" r="42" strokeWidth={2.6 * strokeWidth} />
-      <circle cx="50" cy="50" r="38" strokeWidth={0.6 * strokeWidth} opacity="0.45" />
-      <line x1="50" y1="14" x2="50" y2="20" strokeWidth={2.6 * strokeWidth} />
-      <line x1="86" y1="50" x2="80" y2="50" strokeWidth={2.6 * strokeWidth} />
-      <line x1="50" y1="86" x2="50" y2="80" strokeWidth={2.6 * strokeWidth} />
-      <line x1="14" y1="50" x2="20" y2="50" strokeWidth={2.6 * strokeWidth} />
-      <line x1="68.0" y1="17.2" x2="65.6" y2="21.4" strokeWidth={1.4 * strokeWidth} />
-      <line x1="81.1" y1="30.3" x2="77.0" y2="32.7" strokeWidth={1.4 * strokeWidth} />
-      <line x1="81.1" y1="69.7" x2="77.0" y2="67.3" strokeWidth={1.4 * strokeWidth} />
-      <line x1="68.0" y1="82.8" x2="65.6" y2="78.6" strokeWidth={1.4 * strokeWidth} />
-      <line x1="32.0" y1="82.8" x2="34.4" y2="78.6" strokeWidth={1.4 * strokeWidth} />
-      <line x1="18.9" y1="69.7" x2="23.0" y2="67.3" strokeWidth={1.4 * strokeWidth} />
-      <line x1="18.9" y1="30.3" x2="23.0" y2="32.7" strokeWidth={1.4 * strokeWidth} />
-      <line x1="32.0" y1="17.2" x2="34.4" y2="21.4" strokeWidth={1.4 * strokeWidth} />
-      <line x1="50" y1="50" x2="31.2" y2="39.2" strokeWidth={2.4 * strokeWidth} />
-      <line x1="50" y1="50" x2="77.0" y2="34.5" strokeWidth={1.7 * strokeWidth} />
+      <circle cx="50" cy="50" r="42" strokeWidth={2.8 * strokeWidth} />
+      <circle cx="50" cy="50" r="39" strokeWidth={0.5 * strokeWidth} opacity="0.55" />
+      {/* cardinales: solo ligeramente más gruesas que las intermedias */}
+      <line x1="50" y1="14" x2="50" y2="20" strokeWidth={1.9 * strokeWidth} />
+      <line x1="86" y1="50" x2="80" y2="50" strokeWidth={1.9 * strokeWidth} />
+      <line x1="50" y1="86" x2="50" y2="80" strokeWidth={1.9 * strokeWidth} />
+      <line x1="14" y1="50" x2="20" y2="50" strokeWidth={1.9 * strokeWidth} />
+      {/* intermedias */}
+      <line x1="68.0" y1="17.2" x2="65.6" y2="21.4" strokeWidth={1.5 * strokeWidth} />
+      <line x1="81.1" y1="30.3" x2="77.0" y2="32.7" strokeWidth={1.5 * strokeWidth} />
+      <line x1="81.1" y1="69.7" x2="77.0" y2="67.3" strokeWidth={1.5 * strokeWidth} />
+      <line x1="68.0" y1="82.8" x2="65.6" y2="78.6" strokeWidth={1.5 * strokeWidth} />
+      <line x1="32.0" y1="82.8" x2="34.4" y2="78.6" strokeWidth={1.5 * strokeWidth} />
+      <line x1="18.9" y1="69.7" x2="23.0" y2="67.3" strokeWidth={1.5 * strokeWidth} />
+      <line x1="18.9" y1="30.3" x2="23.0" y2="32.7" strokeWidth={1.5 * strokeWidth} />
+      <line x1="32.0" y1="17.2" x2="34.4" y2="21.4" strokeWidth={1.5 * strokeWidth} />
+      {/* manecillas pose ~8:10: horaria abajo-izquierda + minutera arriba-derecha */}
+      <line x1="50" y1="50" x2="38.0" y2="56.9" strokeWidth={2.4 * strokeWidth} />
+      <line x1="50" y1="50" x2="76.6" y2="34.5" strokeWidth={1.7 * strokeWidth} />
     </g>
     <rect x="89" y="47.5" width="3.5" height="5" rx="0.7" fill="currentColor" />
-    <circle cx="50" cy="50" r="2.0" fill="currentColor" />
+    <circle cx="50" cy="50" r="1.9" fill="currentColor" />
   </svg>
 );
 
