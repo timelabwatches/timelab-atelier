@@ -141,6 +141,9 @@ El último en sincronizar gana (last-write-wins). Para uso individual desde móv
 **¿Cómo cambio el token?**
 Cambia la constante en `Code.gs`, guarda, **despliega una nueva versión** (Implementar → Gestionar implementaciones → icono lápiz → Nueva versión), y actualiza el token en Ajustes del CRM.
 
+**¿Puedo evitar dejar el token en el código?**
+Sí. En el editor de Apps Script, abre **Configuración del proyecto → Propiedades del script** y crea una propiedad llamada `TOKEN` con tu cadena secreta. Si existe esa propiedad, `Code.gs` la usa en lugar de la constante `TOKEN` (la constante se mantiene como fallback para no romper deployments existentes). Así puedes commitar `Code.gs` con la constante en su valor por defecto sin filtrar tu token real.
+
 **¿Las fotos se ven desde el ordenador si las subí del móvil?**
 Sí, una vez sincronizadas con Drive. La miniatura queda con el icono verde ☁️ cuando está lista.
 

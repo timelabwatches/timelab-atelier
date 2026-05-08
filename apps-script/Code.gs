@@ -6,13 +6,26 @@
 // access: Anyone. Copia la URL resultante a los ajustes del CRM.
 //
 // ANTES DE DESPLEGAR:
-//   1. Cambia TOKEN por una cadena aleatoria larga (es tu "contraseña")
+//   1. Define TOKEN: o bien edita la constante TOKEN abajo, o (recomendado)
+//      ve a Project Settings → Script properties y crea una propiedad llamada
+//      TOKEN con tu cadena secreta. Si existe la script property, se usa esa
+//      en lugar de la constante. Así no commiteas el token al repo.
 //   2. Asegúrate de tener una carpeta en Drive llamada TIMELAB-Fotos (o cámbiala)
 //   3. Ejecuta la función `setup()` una vez desde el editor antes del deploy
 // ═══════════════════════════════════════════════════════════════════════════
 
 const TOKEN = "CAMBIA_ESTO_POR_UN_TOKEN_LARGO_Y_ALEATORIO_abc123xyz";
 const PHOTOS_FOLDER_NAME = "TIMELAB-Fotos";
+
+// Prefer Script Properties over the hardcoded constant so the token does not
+// have to live in the repo. Falls back to TOKEN if no property is configured.
+function getToken_() {
+  try {
+    const fromProps = PropertiesService.getScriptProperties().getProperty("TOKEN");
+    if (fromProps && fromProps.length > 0) return fromProps;
+  } catch (_) { /* PropertiesService unavailable in some contexts */ }
+  return TOKEN;
+}
 
 const SHEETS = {
   watches: "watches",
@@ -40,7 +53,7 @@ function setup() {
 function doPost(e) {
   try {
     const body = JSON.parse(e.postData.contents);
-    if (body.token !== TOKEN) {
+    if (body.token !== getToken_()) {
       return json({ error: "invalid_token" });
     }
     switch (body.action) {

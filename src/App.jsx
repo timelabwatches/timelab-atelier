@@ -1884,15 +1884,15 @@ const StockView = ({ state, setView, filter }) => {
           </div>
           <div className="space-y-1.5 text-xs">
             {[
-              { label: "&lt; €100", n: stockMetrics.ticketRanges.lt100 },
+              { label: "< €100", n: stockMetrics.ticketRanges.lt100 },
               { label: "€100 - €200", n: stockMetrics.ticketRanges.range100_200 },
               { label: "€200 - €300", n: stockMetrics.ticketRanges.range200_300 },
-              { label: "&gt; €300", n: stockMetrics.ticketRanges.gt300 },
+              { label: "> €300", n: stockMetrics.ticketRanges.gt300 },
             ].map(b => {
               const pct = stockMetrics.stockCount ? (b.n / stockMetrics.stockCount * 100) : 0;
               return (
                 <div key={b.label} className="flex items-center gap-3">
-                  <span className="w-20" style={{ color: C.dim }} dangerouslySetInnerHTML={{ __html: b.label }} />
+                  <span className="w-20" style={{ color: C.dim }}>{b.label}</span>
                   <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: C.line }}>
                     <div className="h-full" style={{ width: `${pct}%`, background: C.gold }} />
                   </div>
