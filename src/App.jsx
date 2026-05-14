@@ -4,7 +4,7 @@ import {
   uploadPhotoToGas, deletePhotoFromGas, queueOp, drainQueue,
   getLastSync, setLastSync,
   invoicePreviewGas, invoiceGenerateGas, listPendingInvoicesGas,
-  updateOfferDecisionGas,
+  updateOfferDecisionGas, createOperacionFromOfferGas,
 } from "./storage.js";
 import {
   Home, Package, ShoppingBag, Users, FileText, TrendingUp, Settings,
@@ -3149,6 +3149,7 @@ const OffersInboxView = ({ state, dispatch, setView }) => {
   const [showFilters, setShowFilters] = useState(false);
   const [busy, setBusy] = useState(null); // id of offer being decided
   const [detailOffer, setDetailOffer] = useState(null);
+  const [buyModalOffer, setBuyModalOffer] = useState(null);
 
   // Tabs counts
   const counts = useMemo(() => {
@@ -3219,20 +3220,28 @@ const OffersInboxView = ({ state, dispatch, setView }) => {
   };
 
   const handleBuy = (offer) => {
-    // Pre-fill watch form with offer data, then mark offer as "comprar"
-    decide(offer, "comprar").then(() => {
-      // Open Add Watch view with prefill
-      setView({
-        name: "add-watch",
-        prefill: {
-          brand: offer.brand || "",
-          model: offer.model || "",
-          purchase_price: offer.price_eur || 0,
-          purchase_source: offer.source || "",
-          notes: `Desde oferta del bot · ${offer.title || ""}`,
-        },
-      });
-    });
+    // Abre modal de confirmación; el modal hace el create_operacion_from_offer
+    // (crea la fila en OPERACIONES del Excel madre + marca oferta como "comprar"
+    // con watch_id). Se hace todo en el backend de forma atómica.
+    setBuyModalOffer(offer);
+  };
+
+  const onBuySuccess = (result, offer) => {
+    // Marcar oferta como "comprar" localmente con watch_id (mismo patrón que decide)
+    const updated = state.offers.map(o =>
+      o.id === offer.id
+        ? {
+            ...o,
+            decision_atelier: "comprar",
+            decision_date: new Date().toISOString(),
+            watch_id: result.tracker_id,
+          }
+        : o
+    );
+    dispatch({ type: "LOAD", payload: { ...state, offers: updated, loaded: true } });
+    setBuyModalOffer(null);
+    // Nota: la fila ya está en el Excel madre. Para verla en la pestaña Stock,
+    // hay que hacer un sync (pull_with_sync) que el usuario dispara desde Inicio.
   };
 
   return (
@@ -3367,6 +3376,15 @@ const OffersInboxView = ({ state, dispatch, setView }) => {
           <OfferDetail offer={detailOffer} />
         </Modal>
       )}
+
+      {/* Buy confirm modal */}
+      {buyModalOffer && (
+        <BuyConfirmModal
+          offer={buyModalOffer}
+          onClose={() => setBuyModalOffer(null)}
+          onSuccess={(result) => onBuySuccess(result, buyModalOffer)}
+        />
+      )}
     </div>
   );
 };
@@ -3443,6 +3461,134 @@ const OfferCard = ({ offer, busy, onIgnore, onBid, onBuy, onClick, showActions }
         </div>
       )}
     </Card>
+  );
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BUY CONFIRM MODAL — Confirma la compra y crea fila en OPERACIONES
+// ═══════════════════════════════════════════════════════════════════════════
+// Modal que aparece al pulsar Comprar en una oferta. Permite editar marca/
+// modelo si el bot identificó mal, ajustar precio negociado, añadir envío.
+// Al confirmar llama a create_operacion_from_offer (atómico: crea la fila en
+// el Excel madre + marca la oferta como "comprar" con watch_id).
+const BuyConfirmModal = ({ offer, onClose, onSuccess }) => {
+  const today = new Date().toISOString().slice(0, 10);
+  const [form, setForm] = useState({
+    brand:          offer.brand || "",
+    model:          offer.model || "",
+    mecanismo:      "",
+    ano_estimado:   "",
+    proveedor:      offer.source || "",
+    tipo_proveedor: "Particular",
+    regimen_iva:    "REBU",
+    reloj_nuevo:    "No",
+    purchase_price: offer.price_eur || 0,
+    shipping_cost:  0,
+    fecha_compra:   today,
+    target_channel: "Catawiki",
+    notas:          "",
+  });
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState(null);
+
+  const update = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const onConfirm = async () => {
+    setError(null);
+    if (!form.brand.trim()) {
+      setError("La marca no puede estar vacía");
+      return;
+    }
+    if (!(form.purchase_price > 0)) {
+      setError("El precio de compra debe ser mayor que 0");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const result = await createOperacionFromOfferGas({ id: offer.id, ...form });
+      if (!result.ok) {
+        setError(result.error || "Error desconocido");
+        setSubmitting(false);
+        return;
+      }
+      if (result.already_exists) {
+        setError(`Esta oferta ya estaba registrada (tracker ${result.tracker_id})`);
+        // Continuamos a onSuccess para refrescar la vista — la oferta ya está en Compradas
+      }
+      onSuccess(result);
+    } catch (err) {
+      setError("Error de red: " + err.message);
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal title="Confirmar compra" onClose={onClose}>
+      <div className="space-y-3">
+        {/* Resumen oferta origen */}
+        <Card className="p-3" style={{ background: `${C.gold}0a`, border: `1px solid ${C.gold}33` }}>
+          <div className="text-[10px] tracking-widest uppercase font-bold mb-1" style={{ color: C.gold }}>
+            Origen oferta · {offer.source || "?"}
+          </div>
+          <div className="text-sm" style={{ color: C.cream }}>
+            {offer.title || `${offer.brand || ""} ${offer.model || ""}`.trim() || "—"}
+          </div>
+          <div className="text-xs mt-1" style={{ color: C.dim }}>
+            Pedía €{Math.round(offer.price_eur || 0)}
+          </div>
+        </Card>
+
+        {error && (
+          <Card className="p-3" style={{ background: `${C.ruby}1a`, border: `1px solid ${C.ruby}55` }}>
+            <div className="text-xs" style={{ color: C.ruby }}>{error}</div>
+          </Card>
+        )}
+
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Marca" value={form.brand} onChange={(v) => update("brand", v)} />
+          <Field label="Modelo" value={form.model} onChange={(v) => update("model", v)} />
+
+          <Field label="Mecanismo" value={form.mecanismo} onChange={(v) => update("mecanismo", v)}
+            options={["Automático", "Cuarzo", "Manual"]} />
+          <Field label="Año aprox." value={form.ano_estimado} onChange={(v) => update("ano_estimado", v)}
+            placeholder="ej. 1970s" />
+
+          <Field label="Proveedor" value={form.proveedor} onChange={(v) => update("proveedor", v)} />
+          <Field label="Tipo proveedor" value={form.tipo_proveedor} onChange={(v) => update("tipo_proveedor", v)}
+            options={["Particular", "Empresa"]} />
+
+          <Field label="Régimen IVA" value={form.regimen_iva} onChange={(v) => update("regimen_iva", v)}
+            options={["REBU", "GENERAL"]} />
+          <Field label="Reloj nuevo" value={form.reloj_nuevo} onChange={(v) => update("reloj_nuevo", v)}
+            options={["No", "Sí"]} />
+
+          <Field label="Precio compra (€)" value={form.purchase_price}
+            onChange={(v) => update("purchase_price", v)} type="number" />
+          <Field label="Envío (€)" value={form.shipping_cost}
+            onChange={(v) => update("shipping_cost", v)} type="number" />
+
+          <Field label="Fecha compra" value={form.fecha_compra}
+            onChange={(v) => update("fecha_compra", v)} type="date" />
+          <Field label="Canal venta destino" value={form.target_channel}
+            onChange={(v) => update("target_channel", v)}
+            options={["Catawiki", "Vinted", "Chrono24"]} />
+        </div>
+
+        <Field label="Notas" value={form.notas} onChange={(v) => update("notas", v)} rows={2}
+          placeholder="opcional" />
+
+        <div className="flex gap-2 pt-2">
+          <Btn onClick={onClose} variant="secondary" className="flex-1" disabled={submitting}>
+            Cancelar
+          </Btn>
+          <Btn onClick={onConfirm} variant="primary" className="flex-1"
+            disabled={submitting}
+            icon={submitting ? Loader2 : CheckCircle2}>
+            {submitting ? "Creando…" : "Confirmar compra"}
+          </Btn>
+        </div>
+      </div>
+    </Modal>
   );
 };
 
