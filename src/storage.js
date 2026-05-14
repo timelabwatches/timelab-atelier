@@ -149,6 +149,13 @@ export const updateOfferDecisionGas = async (params) => {
   return await callGas("update_offer_decision", { params });
 };
 
+// Convertir una oferta en operación: crea fila en OPERACIONES del Excel madre
+// y marca la oferta como "comprar" con watch_id.
+// Idempotente: si la oferta ya tiene watch_id, devuelve already_exists=true.
+export const createOperacionFromOfferGas = async (params) => {
+  return await callGas("create_operacion_from_offer", { params });
+};
+
 // ─── Sync queue (operations to retry if offline) ────────────────────
 const QUEUE_KEY = "timelab:sync:queue";
 
